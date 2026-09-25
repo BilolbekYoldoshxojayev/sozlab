@@ -15,6 +15,7 @@ import {
 } from '@/lib/api';
 import { AudioRecorder } from '@/lib/audioRecorder';
 import { useRole } from '@/lib/useRole';
+import { WebRTCManager } from '@/lib/webrtcManager';
 
 const QUICK_PROMPTS = [
   {
@@ -62,10 +63,13 @@ export default function CallSimulator() {
   const [isQuickPromptsOpen, setIsQuickPromptsOpen] = useState(false);
   const [customInputText, setCustomInputText] = useState('');
   const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [operatorAudioLevel, setOperatorAudioLevel] = useState(0);
+  const [liveOperatorCaption, setLiveOperatorCaption] = useState<string | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const audioRecorderRef = useRef<AudioRecorder | null>(null);
+  const webrtcRef = useRef<WebRTCManager | null>(null);
 
   // Initialize AudioRecorder
   useEffect(() => {
@@ -139,10 +143,17 @@ export default function CallSimulator() {
                   }
                 : null
             );
+          } else if (data.type === 'live_caption') {
+            if (data.speaker_role === 'operator') {
+              setLiveOperatorCaption(data.text);
+            }
           } else if (data.type === 'call_completed') {
             setActiveCall((prev) => (prev ? { ...prev, status: 'completed' } : null));
             setMode('idle');
             setShowSummaryModal(true);
+            webrtcRef.current?.destroy();
+          } else {
+            webrtcRef.current?.handleSignalingMessage(data);
           }
         } catch (e) {
           console.error('[WS Parse Error]:', e);
@@ -161,6 +172,46 @@ export default function CallSimulator() {
       console.error('[WS Init Error]:', e);
     }
   }, [activeCall?.id, isMuted]);
+
+  // WebRTC initialization when call transfers to operator
+  useEffect(() => {
+    if (activeCall?.status !== 'operator_handling' || !activeCall?.id) {
+      if (webrtcRef.current) {
+        webrtcRef.current.destroy();
+        webrtcRef.current = null;
+      }
+      return;
+    }
+
+    const webrtc = new WebRTCManager(
+      activeCall.id,
+      'citizen',
+      (payload) => {
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify(payload));
+        }
+      },
+      {
+        onAudioLevels: (localLevel, remoteLevel) => {
+          setAudioInputLevel(localLevel);
+          setOperatorAudioLevel(remoteLevel);
+        },
+        onLiveCaption: (role, name, text) => {
+          if (role === 'operator') {
+            setLiveOperatorCaption(text);
+          }
+        },
+      }
+    );
+
+    webrtc.initialize();
+    webrtcRef.current = webrtc;
+
+    return () => {
+      webrtc.destroy();
+      webrtcRef.current = null;
+    };
+  }, [activeCall?.status, activeCall?.id]);
 
   const playAudioResponse = (relativeUrl: string) => {
     const fullUrl = getAudioFullUrl(relativeUrl);
@@ -391,11 +442,19 @@ export default function CallSimulator() {
   const lastAiOrOpMessage = [...messages].reverse().find((m) => m.role === 'ai' || m.role === 'operator');
   const lastCitizenMessage = [...messages].reverse().find((m) => m.role === 'citizen');
 
+  // Live Operator Call Mode flags
+  const isOperatorActive = activeCall?.status === 'operator_handling';
+  const isOperatorSpeaking = operatorAudioLevel > 0.08;
+  const isCitizenSpeaking = audioInputLevel > 0.08;
+
   // Closed caption display text
   let liveCaptionSpeaker = 'SözLab AI';
   let liveCaptionText = 'O\'zbek tilida gapiring, sun\'iy intellekt darhol javob beradi...';
 
-  if (mode === 'recording') {
+  if (isOperatorActive) {
+    liveCaptionSpeaker = isOperatorSpeaking ? (activeCall.assigned_operator || 'Operator') : 'Siz (Fuqaro)';
+    liveCaptionText = liveOperatorCaption || (isOperatorSpeaking ? 'Operator mikrofondan gapirmoqda...' : 'Operator bilan jonli audio muloqot faol. Bemalol gapiring...');
+  } else if (mode === 'recording') {
     liveCaptionSpeaker = 'Siz (Fuqaro)';
     liveCaptionText = 'Tinglanmoqda... Istalgan savolingizni bering.';
   } else if (mode === 'thinking') {
@@ -413,7 +472,15 @@ export default function CallSimulator() {
   }
 
   // Voice Orb Scale Calculation
-  const orbScale = mode === 'recording' ? 1 + audioInputLevel * 0.45 : 1;
+  const orbScale = isOperatorActive
+    ? isOperatorSpeaking
+      ? 1 + operatorAudioLevel * 0.55
+      : isCitizenSpeaking
+      ? 1 + audioInputLevel * 0.45
+      : 1
+    : mode === 'recording'
+    ? 1 + audioInputLevel * 0.45
+    : 1;
 
   return (
     <div className="relative w-full h-[calc(100vh-4.5rem)] overflow-hidden flex flex-col justify-between bg-gradient-to-b from-slate-950 via-[#07172c] to-[#040e1c] text-white select-none">
@@ -483,15 +550,17 @@ export default function CallSimulator() {
           </div>
 
           {/* Quick Prompts Toggle */}
-          <button
-            onClick={() => setIsQuickPromptsOpen((prev) => !prev)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/10 text-xs font-semibold text-amber-300 transition active:scale-95"
-            title="Tezkor savollar panelini ochish"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span className="hidden sm:inline">Tezkor Savollar</span>
-            {isQuickPromptsOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
-          </button>
+          {!isOperatorActive && (
+            <button
+              onClick={() => setIsQuickPromptsOpen((prev) => !prev)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/10 text-xs font-semibold text-amber-300 transition active:scale-95"
+              title="Tezkor savollar panelini ochish"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">Tezkor Savollar</span>
+              {isQuickPromptsOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+            </button>
+          )}
         </div>
       </div>
 
@@ -834,6 +903,12 @@ export default function CallSimulator() {
                 <p className="text-[11px] text-slate-200 bg-slate-900/60 p-2.5 rounded-xl border border-slate-700/50 leading-relaxed">
                   {activeCall?.resolution_summary || 'Fuqaroning ta\'lim me\'yorlari bo\'yicha barcha savollariga to\'liq va rasmiy javob berildi.'}
                 </p>
+              </div>
+
+              {/* Supabase Archiving Badge */}
+              <div className="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-400/30 text-emerald-200 text-xs">
+                <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-400" />
+                <span>Barcha ma&apos;lumotlar va to&apos;liq transkripsiya Supabase bazasiga avtomatik arxivlandi.</span>
               </div>
             </div>
 

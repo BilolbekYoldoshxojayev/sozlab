@@ -12,6 +12,7 @@ import {
   getOperatorWebSocketUrl
 } from '@/lib/api';
 import { useRole } from '@/lib/useRole';
+import OperatorLiveCall from '@/components/OperatorLiveCall';
 
 interface AutoConnectState {
   active: boolean;
@@ -27,8 +28,8 @@ export default function OperatorQueue() {
   const [calls, setCalls] = useState<CallRecord[]>([]);
   const [operators, setOperators] = useState<OperatorRecord[]>([]);
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
+  const [activeLiveCall, setActiveLiveCall] = useState<CallRecord | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [operatorMsg, setOperatorMsg] = useState('');
   const [loading, setLoading] = useState(true);
 
   // 3-second auto-connect countdown state
@@ -171,28 +172,15 @@ export default function OperatorQueue() {
       const updated = await operatorTakeover(callId, activeOperatorName);
       setCalls((prev) => prev.map((c) => (c.id === callId ? updated : c)));
       setSelectedCallId(callId);
+      setActiveLiveCall(updated);
       fetchOperators().then(setOperators).catch(() => {});
     } catch (e) {
       console.error('Takeover failed:', e);
+      const fallbackCall = calls.find((c) => c.id === callId);
+      if (fallbackCall) {
+        setActiveLiveCall(fallbackCall);
+      }
     }
-  };
-
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedCall || !operatorMsg.trim()) return;
-
-    try {
-      const text = operatorMsg.trim();
-      setOperatorMsg('');
-      const updated = await operatorSendMessage(selectedCall.id, text, activeOperatorName);
-      setCalls((prev) => prev.map((c) => (c.id === selectedCall.id ? updated : c)));
-    } catch (e) {
-      console.error('Send message failed:', e);
-    }
-  };
-
-  const handleApplySuggestion = (suggestion: string) => {
-    setOperatorMsg(suggestion);
   };
 
   const handleCompleteCall = async (callId: string) => {
@@ -221,6 +209,23 @@ export default function OperatorQueue() {
 
   const waitingCount = calls.filter((c) => c.status === 'waiting_operator').length;
   const myActiveCallsCount = calls.filter((c) => c.status === 'operator_handling' && c.assigned_operator === activeOperatorName).length;
+
+  // 100vh Full-Screen Live Call Mode
+  if (activeLiveCall) {
+    return (
+      <OperatorLiveCall
+        callId={activeLiveCall.id}
+        citizenName={activeLiveCall.citizen_name || 'Fuqaro'}
+        citizenPhone={activeLiveCall.citizen_phone || '+998 (90) 000-00-00'}
+        topic={activeLiveCall.primary_topic || 'Umumiy Murojaat'}
+        operatorName={activeOperatorName}
+        onEndCall={() => {
+          setActiveLiveCall(null);
+          loadData();
+        }}
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -614,47 +619,34 @@ export default function OperatorQueue() {
                 ))}
               </div>
 
-              {/* Operator Quick Suggestions & Reply Bar */}
-              <div className="p-3 bg-white border-t border-slate-200 flex flex-col gap-2">
-                {/* AI Smart Suggestions Chips */}
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px]">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">
-                    Tavsiyalar:
+              {/* Zero-Chatbot Live Audio Call Action Dock */}
+              <div className="p-4 bg-slate-900 text-white border-t border-slate-200 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2 text-xs text-slate-300">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>
+                    <strong>Zero-Chatbot:</strong> Matnli chat olib tashlangan. Barcha muloqot to&apos;liq jonli ovoz (100vh WebRTC) orqali amalga oshiriladi.
                   </span>
-                  {[
-                    'my.uzbmb.uz orqali ro\'yxatdan o\'tish yo\'riqnomasi yuborildi',
-                    'O\'qishni ko\'chirish (perevod) arizasi transfer.edu.uz da qabul qilinadi',
-                    'Nizomga ko\'ra 50 foiz to\'lov 15-oktabrgacha amalga oshirilishi shart',
-                  ].map((sug, i) => (
-                    <button
-                      key={i}
-                      onClick={() => handleApplySuggestion(sug)}
-                      className="shrink-0 bg-slate-100 hover:bg-blue-50 hover:text-blue-800 hover:border-blue-200 border border-slate-200 px-2.5 py-1 rounded-lg text-slate-700 text-[10px] font-medium transition-all"
-                    >
-                      + {sug}
-                    </button>
-                  ))}
                 </div>
 
-                {/* Operator Text Input Form */}
-                <form onSubmit={handleSendMessage} className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={operatorMsg}
-                    onChange={(e) => setOperatorMsg(e.target.value)}
-                    disabled={selectedCall.status === 'completed'}
-                    placeholder="Fuqaroga rasmiy operator nomidan javob yozing..."
-                    className="flex-1 bg-slate-50 border border-slate-300 rounded-xl px-4 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0b2b50] disabled:bg-slate-100"
-                  />
-                  <button
-                    type="submit"
-                    disabled={!operatorMsg.trim() || selectedCall.status === 'completed'}
-                    className="p-2.5 rounded-xl bg-[#0b2b50] hover:bg-blue-950 text-white font-bold disabled:opacity-40 transition-all active:scale-95"
-                  >
-                    <Send className="w-4 h-4" />
-                  </button>
-                </form>
+                {selectedCall.status !== 'completed' ? (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleTakeover(selectedCall.id)}
+                      className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg flex items-center gap-2 active:scale-95 transition-all"
+                    >
+                      <Headset className="w-4 h-4" />
+                      <span>Jonli Ovozli Muloqotni Boshlash (100vh)</span>
+                    </button>
+                    <button
+                      onClick={() => handleCompleteCall(selectedCall.id)}
+                      className="px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md active:scale-95 transition-all"
+                    >
+                      Yakunlash
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-xs text-slate-400 italic">Qo&apos;ng&apos;iroq yakunlangan</span>
+                )}
               </div>
             </>
           ) : (
