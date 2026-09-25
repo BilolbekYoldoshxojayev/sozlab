@@ -1,272 +1,173 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
 import {
-  PhoneCall, Headset, BarChart3, ShieldCheck, Sparkles,
-  BookOpen, Clock, Bot, ArrowRight, Zap, CheckCircle2,
-  Users, User, Shield, PhoneForwarded
+  PhoneCall, Shield, Sparkles, BookOpen, Clock, Bot,
+  ArrowRight, ShieldCheck, CheckCircle2, FileText, Scale
 } from 'lucide-react';
 import CommonQuestions from '@/components/CommonQuestions';
 import { useRole } from '@/lib/useRole';
 
 export default function HomePage() {
-  const router = useRouter();
-  const { session, isReady, hasSelectedRole, setRole } = useRole();
+  const { setRole } = useRole();
 
-  useEffect(() => {
-    if (isReady && hasSelectedRole) {
-      if (session.role === 'operator') {
-        router.replace('/operator');
-      } else if (session.role === 'admin') {
-        router.replace('/admin');
-      }
-    }
-  }, [isReady, hasSelectedRole, session.role, router]);
-
-  const highlights = [
+  const coreFeatures = [
     {
-      title: 'Dual-AI Ovozli Muloqot',
-      desc: 'Aisha AI va Edge-TTS orqali uzluksiz, tabiiy o\'zbek tilida ovozli muloqot va real vaqtli transkripsiya (< 1.2s javob tezligi).',
+      title: 'VoiceLab Gulnoza Ovoz Modeli',
+      desc: 'VoiceLab Studio SDK orqali tabiiy, ravon va professional o\'zbek adabiy tilidagi ovoz sintezi va tezkor transkripsiya.',
       icon: Sparkles,
-      color: 'bg-emerald-50 text-emerald-700 border-emerald-200',
     },
     {
-      title: 'Rasmiy Bilimlar Bazasi',
-      desc: 'Qabul, grant, super-kontrakt, TTJ va nostrifikatsiya bo\'yicha vazirlikning tasdiqlangan rasmiy me\'yorlari (100% rasmiy manba).',
+      title: '50 ta Rasmiy FAQ va Ensiklopediya',
+      desc: 'Maktab, bog\'cha, OTM qabuli, davlat grantlari, pedagoglar huquqlari va ta\'lim standartlari bo\'yicha to\'liq normativ baza.',
       icon: BookOpen,
-      color: 'bg-blue-50 text-blue-700 border-blue-200',
     },
     {
-      title: 'Aqlli FIFO Navbat',
-      desc: 'Murakkab murojaatlarni navbatchi operatorlar flotiga avtomatik va kechikishsiz yo\'naltirish (Zero-drop dispatch).',
-      icon: Headset,
-      color: 'bg-amber-50 text-amber-700 border-amber-200',
+      title: 'Qat\'iy Huquqiy Cheklov (Guardrail)',
+      desc: 'AI faqat ta\'lim qonunchiligi (Konstitutsiya, O\'RQ-637, O\'RQ-901, VMQ) asosida aniq javob beradi; sohadan tashqari mavzularga to\'qima javob bermaydi.',
+      icon: Scale,
     },
   ];
 
-  const steps = [
+  const workflowStages = [
     {
-      step: '01',
-      title: 'Ovozli Murojaat',
-      desc: 'Mikrofon orqali savolingizni tabiiy o\'zbek tilida bering.',
+      num: '01',
+      title: 'Ovozli Savol',
+      desc: 'Fuqaro mikrofonga erkin va tabiiy o\'zbek tilida savol beradi.',
     },
     {
-      step: '02',
-      title: 'Tezkor Tahlil',
-      desc: 'Gemini va me\'yoriy baza asosida rasmiy javob topiladi.',
+      num: '02',
+      title: 'VoiceLab STT',
+      desc: 'VoiceLab rasmiy nutq modeli orqali ovoz aniq matnga o\'giriladi.',
     },
     {
-      step: '03',
-      title: 'Ovozli Javob',
-      desc: 'Tabiiy ovozda javob beriladi va jonli subtitr aks etadi.',
+      num: '03',
+      title: 'Yuridik RAG Tahlili',
+      desc: '50 ta rasmiy FAQ va normativ ensiklopediyadan qonuniy asoslar topiladi.',
     },
     {
-      step: '04',
-      title: 'Operator Yordami',
-      desc: 'Zarur hollarda qo\'ng\'iroq navbatchi operatorga uzatiladi.',
+      num: '04',
+      title: 'Ovozli Javob & Subtitr',
+      desc: 'VoiceLab Gulnoza ovozida rasmiy moddalar keltirilib, javob qaytadi.',
     },
   ];
 
   return (
-    <div className="flex flex-col gap-12 py-4 sm:py-8">
-      {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#081e38] via-[#0b2b50] to-[#1e6091] text-white p-8 sm:p-12 lg:p-16 shadow-xl">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-blue-400/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-80 h-80 bg-emerald-400/10 rounded-full blur-3xl pointer-events-none" />
-
+    <div className="flex flex-col gap-10 py-4 sm:py-8 text-zinc-100 max-w-6xl mx-auto px-4">
+      {/* Hero Section: Minimalist Obsidian Enterprise */}
+      <div className="relative overflow-hidden rounded-2xl bg-zinc-900 border border-zinc-800 p-8 sm:p-12 lg:p-14 shadow-2xl">
         <div className="relative z-10 max-w-3xl">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/10 backdrop-blur border border-white/20 text-xs font-semibold text-amber-300 mb-6">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Oliy Ta&apos;lim Ovozli AI Platformasi</span>
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-800 border border-zinc-700 text-xs font-medium text-zinc-300 mb-6">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <span>1006 / 1007 Yagona Avtonom Ovozli Markaz</span>
           </div>
 
-          <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight leading-tight mb-6">
-            Ta&apos;lim va Innovatsiyalar Vazirligi uchun{' '}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-emerald-300 to-sky-200">
-              Sun&apos;iy Intellektli Ovozli Call Markaz
+          <h1 className="text-3xl sm:text-5xl font-bold tracking-tight text-white leading-tight mb-5">
+            O&apos;zbekiston Respublikasi Ta&apos;lim Vazirliklari uchun{' '}
+            <span className="text-zinc-200">
+              100% Avtonom AI Ovozli Call-Markazi
             </span>
           </h1>
 
-          <p className="text-base sm:text-lg text-slate-200 leading-relaxed mb-8 max-w-2xl font-normal">
-            Oliy ta&apos;lim bo&apos;yicha barcha savollarga 24/7 rejimida tabiiy o&apos;zbek tilida tezkor ovozli javob beruvchi intellektual call-markaz.
+          <p className="text-sm sm:text-base text-zinc-400 leading-relaxed mb-8 max-w-2xl font-normal">
+            Maktabgacha ta&apos;lim, maktablar, oliy ta&apos;lim qabuli, davlat grantlari va pedagoglar huquqiy himoyasi bo&apos;yicha barcha savollarga 24/7 rejimida tabiiy o&apos;zbek tilida rasmiy qonuniy asoslangan ovozli maslahat.
           </p>
 
-          <div className="flex flex-wrap items-center gap-4">
+          <div className="flex flex-wrap items-center gap-3">
             <Link
               href="/call"
               onClick={() => setRole('citizen')}
-              className="flex items-center gap-2.5 px-6 py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm shadow-lg shadow-emerald-900/30 transition-all hover:scale-105 active:scale-95"
+              className="flex items-center gap-2 px-6 py-3 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs transition active:scale-95 shadow-md"
             >
-              <PhoneCall className="w-4 h-4 animate-bounce" />
+              <PhoneCall className="w-4 h-4" />
               <span>Ovozli Qo&apos;ng&apos;iroqni Boshlash</span>
-              <ArrowRight className="w-4 h-4" />
+              <ArrowRight className="w-3.5 h-3.5 ml-1" />
             </Link>
 
             <Link
-              href="/operator"
-              onClick={() => setRole('operator', 'op-1', 'Nargiza Qodirova')}
-              className="flex items-center gap-2 px-6 py-3.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-semibold text-sm backdrop-blur transition-all"
+              href="/history"
+              className="flex items-center gap-2 px-5 py-3 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 font-medium text-xs transition active:scale-95"
             >
-              <Headset className="w-4 h-4 text-amber-300" />
-              <span>Operator Paneliga O&apos;tish</span>
+              <FileText className="w-4 h-4 text-zinc-400" />
+              <span>50 ta Rasmiy FAQ Bazasini O&apos;qish</span>
             </Link>
 
-            <Link
-              href="/admin"
-              onClick={() => setRole('admin')}
-              className="flex items-center gap-2 px-6 py-3.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-semibold text-sm backdrop-blur transition-all"
-            >
-              <Shield className="w-4 h-4 text-purple-300" />
-              <span>Admin Boshqaruvi</span>
-            </Link>
-          </div>
-        </div>
-
-        {/* Floating Quick Stats Badge */}
-        <div className="mt-10 pt-8 border-t border-white/10 grid grid-cols-2 sm:grid-cols-4 gap-4 text-center sm:text-left">
-          <div>
-            <div className="text-2xl font-extrabold text-amber-300 font-mono">85.4%</div>
-            <div className="text-xs text-slate-300 font-medium">AI orqali avtomatik hal etish</div>
-          </div>
-          <div>
-            <div className="text-2xl font-extrabold text-emerald-300 font-mono">&lt; 1.2s</div>
-            <div className="text-xs text-slate-300 font-medium">Ovozli javob tezligi</div>
-          </div>
-          <div>
-            <div className="text-2xl font-extrabold text-sky-300 font-mono">3 Operator</div>
-            <div className="text-xs text-slate-300 font-medium">Smart navbat & dispatch</div>
-          </div>
-          <div>
-            <div className="text-2xl font-extrabold text-indigo-300 font-mono">24 / 7</div>
-            <div className="text-xs text-slate-300 font-medium">To&apos;xtovsiz xizmat</div>
-          </div>
-        </div>
-      </div>
-
-      {/* 3 Distinct User Roles Section */}
-      <div className="bg-white rounded-3xl border border-slate-200 p-8 sm:p-10 shadow-sm">
-        <div className="text-center max-w-2xl mx-auto mb-8">
-          <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">
-            Foydalanuvchi Tajribasi
-          </span>
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-3 mb-2">
-            3 Ta Alohida Rol Orqali Tizimga Kiring
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-500">
-            Tizimdan fuqaro, operator yoki vazirlik ma&apos;muri sifatida foydalaning.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Role 1: Citizen */}
-          <div className="p-6 rounded-2xl border border-emerald-200 bg-gradient-to-b from-emerald-50/40 to-white flex flex-col justify-between hover:shadow-md transition">
-            <div>
-              <div className="w-12 h-12 rounded-xl bg-emerald-500 text-white flex items-center justify-center font-bold mb-4 shadow-md shadow-emerald-500/20">
-                <User className="w-6 h-6" />
-              </div>
-              <h3 className="font-bold text-lg text-slate-900 mb-1">1. Fuqaro (Citizen)</h3>
-              <p className="text-xs text-slate-600 mb-4 leading-relaxed">
-                Vazirlik AI yordamchisiga mikrofon orqali gapirib savol beradi, rasmiy javobni ovozli tinglaydi, kerak bo&apos;lsa navbatga turadi.
-              </p>
-            </div>
-            <Link
-              href="/call"
-              onClick={() => setRole('citizen')}
-              className="w-full text-center py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition"
-            >
-              Fuqaro Sifatida Kirish →
-            </Link>
-          </div>
-
-          {/* Role 2: Operator */}
-          <div className="p-6 rounded-2xl border border-blue-200 bg-gradient-to-b from-blue-50/40 to-white flex flex-col justify-between hover:shadow-md transition">
-            <div>
-              <div className="w-12 h-12 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold mb-4 shadow-md shadow-blue-600/20">
-                <Headset className="w-6 h-6" />
-              </div>
-              <h3 className="font-bold text-lg text-slate-900 mb-1">2. Inson-Operator</h3>
-              <p className="text-xs text-slate-600 mb-4 leading-relaxed">
-                AI yo&apos;naltirgan yoki navbatdagi fuqarolarni qabul qiladi, real-vaqtda chat yozishadi va qo&apos;ng&apos;iroqni yakunlaydi.
-              </p>
-            </div>
-            <Link
-              href="/operator"
-              onClick={() => setRole('operator', 'op-1', 'Nargiza Qodirova')}
-              className="w-full text-center py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition"
-            >
-              Operator Sifatida Kirish →
-            </Link>
-          </div>
-
-          {/* Role 3: Admin */}
-          <div className="p-6 rounded-2xl border border-purple-200 bg-gradient-to-b from-purple-50/40 to-white flex flex-col justify-between hover:shadow-md transition">
-            <div>
-              <div className="w-12 h-12 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold mb-4 shadow-md shadow-purple-600/20">
-                <Shield className="w-6 h-6" />
-              </div>
-              <h3 className="font-bold text-lg text-slate-900 mb-1">3. Vazirlik Ma&apos;muri (Admin)</h3>
-              <p className="text-xs text-slate-600 mb-4 leading-relaxed">
-                Barcha 3 operator holati, jonli FIFO navbat oqimi, RAG bilimlar bazasi va umumiy tizim yuklamasini nazorat qiladi.
-              </p>
-            </div>
             <Link
               href="/admin"
               onClick={() => setRole('admin')}
-              className="w-full text-center py-2.5 px-4 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-sm transition"
+              className="flex items-center gap-2 px-5 py-3 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 font-medium text-xs transition active:scale-95"
             >
-              Admin Sifatida Kirish →
+              <Shield className="w-4 h-4 text-zinc-400" />
+              <span>Admin Nazorati</span>
             </Link>
           </div>
         </div>
-      </div>
 
-      {/* Interactive Official FAQ Section */}
-      <CommonQuestions />
+        {/* Quick Metrics Bar */}
+        <div className="mt-10 pt-6 border-t border-zinc-800 grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div>
+            <div className="text-xl font-bold text-white font-mono">100%</div>
+            <div className="text-xs text-zinc-400 mt-0.5">Avtonom AI Yechim</div>
+          </div>
+          <div>
+            <div className="text-xl font-bold text-white font-mono">&lt; 1.2s</div>
+            <div className="text-xs text-zinc-400 mt-0.5">VoiceLab Ovoz Sintezi</div>
+          </div>
+          <div>
+            <div className="text-xl font-bold text-white font-mono">50 FAQ</div>
+            <div className="text-xs text-zinc-400 mt-0.5">8 ta Asosiy Bo&apos;lim</div>
+          </div>
+          <div>
+            <div className="text-xl font-bold text-white font-mono">24 / 7</div>
+            <div className="text-xs text-zinc-400 mt-0.5">Uzluksiz Xizmat</div>
+          </div>
+        </div>
+      </div>
 
       {/* Core Advantages */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {highlights.map((h, i) => {
-          const Icon = h.icon;
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {coreFeatures.map((item, idx) => {
+          const Icon = item.icon;
           return (
             <div
-              key={i}
-              className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow"
+              key={idx}
+              className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 flex flex-col justify-between hover:border-zinc-700 transition"
             >
               <div>
-                <div className={`w-11 h-11 rounded-xl border flex items-center justify-center mb-4 ${h.color}`}>
-                  <Icon className="w-5 h-5" />
+                <div className="w-10 h-10 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-200 mb-4">
+                  <Icon className="w-5 h-5 text-zinc-300" />
                 </div>
-                <h3 className="font-bold text-base text-slate-900 mb-2">{h.title}</h3>
-                <p className="text-xs text-slate-600 leading-relaxed">{h.desc}</p>
+                <h3 className="font-semibold text-sm text-white mb-2">{item.title}</h3>
+                <p className="text-xs text-zinc-400 leading-relaxed">{item.desc}</p>
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* How it Works Section */}
-      <div className="bg-white rounded-3xl border border-slate-200 p-8 sm:p-12 shadow-sm">
-        <div className="text-center max-w-2xl mx-auto mb-10">
-          <span className="text-xs font-bold text-blue-700 uppercase tracking-wider bg-blue-50 px-3 py-1 rounded-full border border-blue-100">
-            Tizim Mexanizmi
+      {/* 50 FAQ Interactive Knowledge Base Preview */}
+      <CommonQuestions />
+
+      {/* Workflow: How It Works */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 sm:p-10">
+        <div className="max-w-xl mb-8">
+          <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider bg-zinc-800 px-2.5 py-1 rounded border border-zinc-700">
+            Avtonom Jarayon
           </span>
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-3 mb-2">
+          <h2 className="text-xl sm:text-2xl font-bold text-white mt-3 mb-1.5">
             SözLab Qanday Ishlaydi?
           </h2>
-
-          <p className="text-xs sm:text-sm text-slate-500">
-            Fuqaro murojaatidan to rasmiy ovozli javobgacha bo&apos;lgan to&apos;liq jarayon.
+          <p className="text-xs text-zinc-400">
+            Fuqaro mikrofoni orqali yuborilgan ovozli murojaatdan to rasmiy huquqiy javobgacha bo&apos;lgan 4 bosqichli zanjir.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {steps.map((st, i) => (
-            <div key={i} className="relative flex flex-col p-5 bg-slate-50 rounded-2xl border border-slate-200">
-              <span className="text-3xl font-black text-slate-300 font-mono mb-2">{st.step}</span>
-              <h4 className="font-bold text-sm text-slate-900 mb-1.5">{st.title}</h4>
-              <p className="text-xs text-slate-600 leading-relaxed">{st.desc}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {workflowStages.map((st, i) => (
+            <div key={i} className="p-5 bg-zinc-950/70 rounded-xl border border-zinc-800/80">
+              <span className="text-2xl font-bold text-zinc-500 font-mono block mb-2">{st.num}</span>
+              <h4 className="font-semibold text-xs text-white mb-1.5">{st.title}</h4>
+              <p className="text-xs text-zinc-400 leading-relaxed">{st.desc}</p>
             </div>
           ))}
         </div>

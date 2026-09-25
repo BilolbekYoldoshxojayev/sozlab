@@ -1,190 +1,168 @@
-import re
-from typing import List, Optional, Tuple
-from app.models.schemas import KnowledgeItem, TopicCategory
+"""
+SözLab Unified Legal Knowledge Base Service
+Combines:
+1. Top-50 Official Education FAQs (Maktabgacha, Maktab, OTM, Pedagoglar huquqlari)
+2. Education Legislation Encyclopedia (Constitution 50, 51, 52, 77, O'RQ-637, O'RQ-901, Decrees)
+3. Strict Grounding Filter: Detects in-scope education queries vs out-of-scope queries
+"""
 
+import re
+from typing import List, Optional, Tuple, Dict, Any
+from app.models.schemas import KnowledgeItem, TopicCategory
+from app.data.education_faq_50 import FAQ_50_ITEMS, search_faq_items
+from app.data.education_legislation_encyclopedia import LEGAL_ENCYCLOPEDIA_ARTICLES, search_encyclopedia
+
+# Out-of-scope refusal message
+OUT_OF_SCOPE_REFUSAL = (
+    "Kechirasiz, ushbu masala vazirlikning rasmiy ta'lim qonunchiligi bazasiga kirmaydi. "
+    "Men faqat maktabgacha ta'lim (bog'cha), umumta'lim maktablari, oliy ta'lim (qabul, grant, kontrakt, "
+    "yotoqxona, perevod), pedagoglar huquqlari va ta'lim kafolatlari bo'yicha rasmiy savollarga javob beraman. "
+    "Iltimos, ta'limga oid savolingizni bering."
+)
+
+# Core educational keywords across all 8 sectors
+EDUCATION_SCOPE_KEYWORDS = {
+    "maktab", "sinf", "o'quvchi", "o'qituvchi", "pedagog", "bog'cha", "tarbiyachi",
+    "otm", "oliygoh", "universitet", "institut", "talaba", "rektor", "dekanat",
+    "qabul", "grant", "kontrakt", "super-kontrakt", "to'lov-kontrakt", "kvota",
+    "gpa", "baho", "bsb", "chsb", "reyting", "hemis", "attestatsiya", "toifa",
+    "yotoqxona", "ttj", "ijara", "kompensatsiya", "stipendiya", "kredit", "ta'lim krediti",
+    "perevod", "ko'chirish", "tiklash", "diplom", "attestat", "nostrifikatsiya", "apostil",
+    "1-sinf", "forma", "darslik", "majburiy mehnat", "ta'til", "56 kun", "tibbiy ko'rik",
+    "inklyuziv", "nogiron", "yetim", "xotin-qizlar", "litsenziya", "xususiy maktab",
+    "nodavlat", "kurs", "repetitor", "1006", "1007", "vazirlik", "ishonch telefoni",
+    "dars", "hafta", "stavka", "16 soat", "direktor jamg'armasi", "sinf rahbarligi",
+    "qonun", "o'rq-637", "o'rq-901", "konstitutsiya", "50-modda", "52-modda",
+    "magistratura", "magistr", "bakalavr", "doktorantura", "sertifikat", "til", "chet tili",
+    "cefr", "ielts", "toefl", "imtihon", "test", "bilim", "ta'lim", "fakultet", "yo'nalish",
+    "ball", "o'tish bali", "vmq-376", "vmq-447", "vmq-527", "vmq-605", "qaror"
+}
+
+# Explicit out-of-scope topic triggers
+OUT_OF_SCOPE_TRIGGERS = {
+    "ob-havo", "havo qanday", "ovqat", "retsept", "pishirish", "futbol", "kino",
+    "siyosat", "dollar kursi", "valyuta", "mashina", "avtomobil", "haydovchilik",
+    "pasport stoli", "propiska", "pensiya jamg'armasi", "kadastr", "kommunal",
+    "tibbiyot retsepti", "dori-darmon", "dori", "kasallik", "bosh og'rig'i",
+    "qiziqarli fakt", "latifa", "she'r ayt"
+}
+
+def is_in_educational_scope(query: str) -> bool:
+    """
+    Checks if a query is related to educational laws, decrees, or 1006/1007 competence.
+    Returns True if in scope, False if out of scope.
+    """
+    q = query.lower().strip()
+    if not q:
+        return False
+        
+    # Check out-of-scope triggers first
+    for trigger in OUT_OF_SCOPE_TRIGGERS:
+        if trigger in q:
+            return False
+            
+    # Check educational scope keywords
+    words = re.findall(r'\b\w+\b', q)
+    for w in words:
+        if w in EDUCATION_SCOPE_KEYWORDS:
+            return True
+            
+    for kw in EDUCATION_SCOPE_KEYWORDS:
+        if kw in q:
+            return True
+            
+    # Greeting / generic courteous openers are in-scope
+    greetings = ["salom", "assalomu", "assalom", "aloh", "alo", "eshityapsizmi", "qanday", "yordam"]
+    if any(g in q for g in greetings) and len(words) <= 4:
+        return True
+
+    return False
+
+def get_complete_legal_context(query: str, max_faqs: int = 3, max_articles: int = 2) -> Dict[str, Any]:
+    """
+    Retrieves legal context from both the 50 FAQs and the Encyclopedia.
+    Formats exact law citations for direct LLM injection.
+    """
+    in_scope = is_in_educational_scope(query)
+    if not in_scope:
+        return {
+            "in_scope": False,
+            "refusal_text": OUT_OF_SCOPE_REFUSAL,
+            "faqs": [],
+            "articles": [],
+            "formatted_context": "SAVOL TA'LIM DOIRASIDAN TASHQARIDA. RASMIY RAD JAVOBINI BERING."
+        }
+
+    faqs = search_faq_items(query, limit=max_faqs)
+    articles = search_encyclopedia(query, limit=max_articles)
+
+    context_lines = []
+    if faqs:
+        context_lines.append("--- RASMIY 50 SAVOL-JAVOB BAZASIDAN TOPILGAN MATERIALLAR ---")
+        for f in faqs:
+            context_lines.append(
+                f"SAVOL #{f['id']} ({f['chapter_name']}): {f['question']}\n"
+                f"QONUNIY ASOS: {f['legal_basis']}\n"
+                f"LO'NDA JAVOB: {f['short_answer']}\n"
+                f"BATAFSIL JAVOB: {f['full_answer']}\n"
+            )
+
+    if articles:
+        context_lines.append("--- TA'LIM QONUNCHILIGI ENSIKLOPEDIYASI MODDALARI ---")
+        for a in articles:
+            context_lines.append(
+                f"HUJJAT: {a['title']} ({a['category']})\n"
+                f"MAZMUNI: {a['summary']}\n"
+                f"ANIQ MATN: {a['text']}\n"
+            )
+
+    return {
+        "in_scope": True,
+        "refusal_text": None,
+        "faqs": faqs,
+        "articles": articles,
+        "formatted_context": "\n".join(context_lines) if context_lines else "Umumiy ta'lim qonunchiligi asosida javob bering."
+    }
+
+
+# Backwards compatibility legacy items
 MINISTRY_KNOWLEDGE_BASE: List[KnowledgeItem] = [
     KnowledgeItem(
-        id="kb-qabul-2026",
-        topic=TopicCategory.QABUL,
-        title="Oliy ta'lim muassasalariga qabul va ro'yxatdan o'tish tartibi",
-        summary="Abituriyentlar my.uzbmb.uz portali orqali 5 tagacha ta'lim yo'nalishini tanlaydi. Test sinovlari 'Avval test, so'ng tanlov' tamoyili asosida o'tkaziladi.",
-        official_regulation="O'zbekiston Respublikasi Vazirlar Mahkamasining OTMlarga qabul to'g'risidagi nizomi va Prezident qarorlari.",
-        faq_questions=[
-            "OTMlarga hujjat topshirish qachon boshlanadi va qayerdan qilinadi?",
-            "Nechta oliygoh yoki yo'nalish tanlash mumkin?",
-            "Abituriyent qanday hujjatlarni yuklashi shart?",
-            "Chet tili sertifikati qanday ball beradi?"
-        ],
-        action_steps=[
-            "1. my.uzbmb.uz saytida OneID orqali ro'yxatdan o'ting.",
-            "2. Pasport va attestat/diplom ma'lumotlarini tasdiqlang.",
-            "3. Test topshirish hududi va chet tili sertifikatini (agar mavjud bo'lsa) kiriting.",
-            "4. 5 tagacha yo'nalishni tanlang va to'lov kvitansiyasini tasdiqlang."
-        ],
-        links=["https://my.uzbmb.uz", "https://edu.uz"]
-    ),
-    KnowledgeItem(
-        id="kb-grant-2026",
-        topic=TopicCategory.GRANT,
-        title="Davlat grantlari va ijtimoiy-rag'batlantiruvchi kvotalar",
-        summary="Davlat grantlari har yili talabalarning akademik o'zlashtirish reytingiga (GPA) qarab qayta taqsimlanadi. Ijtimoiy himoyaga muhtoj qizlar va ehtiyojmand oilalar uchun qo'shimcha grant kvotalari mavjud.",
-        official_regulation="Ta'lim sohasida davlat buyurtmasi va ta'lim grantlarini qayta taqsimlash to'g'risidagi qonunchilik hujjatlari.",
-        faq_questions=[
-            "Davlat granti har yili qayta taqsimlanadimi?",
-            "Grantda o'qigan talaba o'qishni bitirgach ishlab berishi shartmi?",
-            "Xotin-qizlar uchun 4 foizli davlat granti qanday olinadi?",
-            "GPA baholarim tushib ketsa grantdan kontraktga tushamanmi?"
-        ],
-        action_steps=[
-            "1. O'quv yili yakunida HEMIS tizimidagi umumiy GPA ballingizni tekshiring.",
-            "2. Ijtimoiy kvota uchun 'Ijtimoiy himoya yagona reyestri' ma'lumotnomasini taqdim eting.",
-            "3. Fakultet dekanatiga ariza bilan murojaat qiling."
-        ],
-        links=["https://edu.uz/uz/pages/grants", "https://hemis.uz"]
-    ),
-    KnowledgeItem(
-        id="kb-kontrakt-super",
-        topic=TopicCategory.KONTRAKT,
-        title="Tabaqalashtirilgan to'lov-shartnoma (Super-kontrakt) tartibi",
-        summary="Kirish baliga 4.05 ballgacha yetmagan abituriyentlar tabaqalashtirilgan kontrakt asosida o'qishga qabul qilinadi. To'lov miqdori yetmagan ballga proporsional ravishda belgilanadi.",
-        official_regulation="Davlat komissiyasining to'lov-shartnoma asosida o'qishga qabul qilish parametrlari to'g'risidagi bayonlari.",
-        faq_questions=[
-            "Super kontrakt arizasini qayerdan yuboraman?",
-            "Super kontrakt miqdori qancha?",
-            "Kontrakt to'lovini bo'lib to'lasa bo'ladimi?",
-            "56.7 balldan past to'plaganlar o'qiy oladimi?"
-        ],
-        action_steps=[
-            "1. my.uzbmb.uz yoki OTMning my.edu.uz platformasida ariza qoldiring.",
-            "2. Hisoblangan tabaqalashtirilgan shartnoma kvitansiyasini yuklab oling.",
-            "3. Shartnoma summasining 50 foizini belgilangan muddatgacha to'lang."
-        ],
-        links=["https://my.edu.uz", "https://t-kontrakt.edu.uz"]
-    ),
-    KnowledgeItem(
-        id="kb-ttj-turar-joy",
-        topic=TopicCategory.TTJ,
-        title="Talabalar turar joyi (TTJ) va ijara kompensatsiyasi",
-        summary="Talabalarni yotoqxona bilan ta'minlash to'liq my.gov.uz portali orqali inson omilisiz amalga oshiriladi. TTJ yetmagan talabalarga oylik ijara to'lovining 50 foizi (BHM ning 1 baravarigacha) davlat tomonidan qoplab beriladi.",
-        official_regulation="Vazirlar Mahkamasining 2021-yil 9-sentyabrdagi 605-son qarori.",
-        faq_questions=[
-            "Yotoqxonaga arizani qanday topshirish kerak?",
-            "Ijara kompensatsiyasini olish uchun qanday hujjat kerak?",
-            "Birinchi kurslar yotoqxona bilan to'liq ta'minlanadimi?",
-            "Ijara shartnomasi soliq idorasida ro'yxatdan o'tgan bo'lishi shartmi?"
-        ],
-        action_steps=[
-            "1. my.gov.uz portalida 'Talabalar turar joyiga joylashish' xizmatini tanlang.",
-            "2. Imtiyoz toifalari (chin yetim, nogironlik, kam ta'minlangan) bo'lsa hujjatlarni ilova qiling.",
-            "3. Ijara kompensatsiyasi uchun ijara.soliq.uz orqali ro'yxatdan o'tgan shartnomani dekanatga topshiring."
-        ],
-        links=["https://my.gov.uz", "https://ijara.soliq.uz"]
-    ),
-    KnowledgeItem(
-        id="kb-nostrifikatsiya",
-        topic=TopicCategory.NOSTRIFIKATSIYA,
-        title="Xorijiy diplomlarni tan olish va nostrifikatsiya qilish",
-        summary="Xorijiy davlatlarda berilgan oliy ta'lim diplomlari Ta'lim sifatini nazorat qilish inspeksiyasi / Bilimni baholash agentligi orqali my.gov.uz orqali tan olinadi. TOP-1000 talikka kirgan OTM diplomlari to'g'ridan-to'g'ri (imtihonsiz) tan olinadi.",
-        official_regulation="Vazirlar Mahkamasining 2019-yil 24-iyuldagi 620-son qarori.",
-        faq_questions=[
-            "Chet el diplomini O'zbekistonda tan olish tartibi qanday?",
-            "Qaysi oliygohlar diplomi imtihonsiz tan olinadi?",
-            "Masofaviy (onlayn) o'qigan diplomlar nostrifikatsiya qilinadimi?",
-            "Nostrifikatsiya arizasini ko'rib chiqish muddati qancha?"
-        ],
-        action_steps=[
-            "1. my.gov.uz saytida 'Xorijiy ta'lim to'g'risidagi hujjatlarni tan olish' xizmatini oching.",
-            "2. Diplom, ilova va ularning notarial tasdiqlangan o'zbekcha tarjimasini yuklang.",
-            "3. Davlat bojini to'lang va belgilangan test sinovida qatnashing (TOP-1000 OTMlar bundan mustasno)."
-        ],
-        links=["https://my.gov.uz/uz/service/263", "https://uzbmb.uz"]
-    ),
-    KnowledgeItem(
-        id="kb-stipendiya-kredit",
-        topic=TopicCategory.STIPENDIYA,
-        title="Talabalar stipendiyalari va imtiyozli ta'lim kreditlari",
-        summary="Davlat granti talabalariga bazaviy stipendiya to'lanadi. Xotin-qizlar uchun ta'lim krediti foizsiz (0% stavkada) beriladi. Boshqa toifadagi talabalarga Markaziy bank asosiy stavkasida ta'lim kreditlari ajratiladi.",
-        official_regulation="O'zbekiston Respublikasi Prezidentining 2021-yil 30-iyuldagi PQ-5203-son qarori.",
-        faq_questions=[
-            "Ta'lim kreditini qaysi banklardan va qanday shartlarda olish mumkin?",
-            "Qizlar uchun ta'lim krediti rostdan ham foizsizmi?",
-            "Stipendiya miqdori a'lo baholarga qarab oshadimi?",
-            "Kreditni qaytarish qachondan boshlanadi?"
-        ],
-        action_steps=[
-            "1. talim-krediti.mf.uz portali orqali onlayn ariza yuboring.",
-            "2. OTM bilan tuzilgan to'lov-kontrakt shartnomasini taqdim eting.",
-            "3. O'qishni tamomlagandan so'ng 7-oydan boshlab 7 yil davomida qaytaring."
-        ],
-        links=["https://talim-krediti.mf.uz", "https://cbu.uz"]
-    ),
-    KnowledgeItem(
-        id="kb-perevod-transfer",
-        topic=TopicCategory.PEREVOD,
-        title="O'qishni ko'chirish va qayta tiklash (Perevod) qoidalari",
-        summary="O'qishni bir OTMdan boshqasiga ko'chirish faqat transfer.edu.uz portali orqali 15-iyuldan 5-avgustgacha qabul qilinadi. Uzrli sabablarga (turmushga chiqish, davlat xizmatchisining ish joyi o'zgarishi) ega talabalar arizasi ko'rib chiqiladi.",
-        official_regulation="Vazirlar Mahkamasining 2017-yil 20-iyundagi 393-son qarori.",
-        faq_questions=[
-            "Xorijiy OTMdan O'zbekistonga o'qishni ko'chirishda test topshiriladimi?",
-            "Turmushga chiqqan qizlarning o'qishini ko'chirish tartibi qanday?",
-            "Perevod arizalari qaysi sayt orqali yuboriladi?",
-            "O'qishdan chetlashtirilgan talaba qanday qilib o'qishini tiklaydi?"
-        ],
-        action_steps=[
-            "1. transfer.edu.uz saytida pasport va transkript (reyting daftarchasi) ma'lumotlarini kiriting.",
-            "2. Uzrli sababni tasdiqlovchi hujjatlarni yuklang.",
-            "3. Bilimni baholash agentligi (UzBMB) o'tkazadigan maxsus testda o'tish balini to'plang."
-        ],
-        links=["https://transfer.edu.uz", "https://edu.uz"]
+        id=f"faq-{f['id']}",
+        topic=TopicCategory.QABUL if "qabul" in f['keywords'] else (
+            TopicCategory.GRANT if "grant" in f['keywords'] else (
+                TopicCategory.KONTRAKT if "kontrakt" in f['keywords'] else (
+                    TopicCategory.TTJ if "yotoqxona" in f['keywords'] or "ijara" in f['keywords'] else (
+                        TopicCategory.NOSTRIFIKATSIYA if "nostrifikatsiya" in f['keywords'] else TopicCategory.STIPENDIYA
+                    )
+                )
+            )
+        ),
+        title=f["question"],
+        summary=f["short_answer"],
+        official_regulation=f["legal_basis"],
+        faq_questions=[f["question"]],
+        action_steps=[f["full_answer"]],
+        links=["https://lex.uz", "https://edu.uz"]
     )
+    for f in FAQ_50_ITEMS[:10]
 ]
 
 def search_knowledge_base(query: str, limit: int = 2) -> List[KnowledgeItem]:
-    """
-    Search ministry regulations using weighted keyword & intent matching.
-    """
-    if not query:
-        return MINISTRY_KNOWLEDGE_BASE[:limit]
-
-    q_lower = query.lower()
-    scores: List[Tuple[float, KnowledgeItem]] = []
-
-    keyword_map = {
-        TopicCategory.QABUL: ["qabul", "hujjat", "topshirish", "my.uzbmb", "bmb", "dtm", "abituriyent", "yo'nalish", "ball", "imtihon", "sertifikat"],
-        TopicCategory.GRANT: ["grant", "davlat granti", "byudjet", "bepul", "gpa", "xotin-qizlar", "kvota", "ijtimoiy"],
-        TopicCategory.KONTRAKT: ["kontrakt", "super", "tabaqalashtirilgan", "shartnoma", "to'lov", "narxi", "qimmat", "56.7", "kvitansiya"],
-        TopicCategory.TTJ: ["ttj", "yotoqxona", "turar joy", "ijara", "kompensatsiya", "kvartira", "joylashish", "my.gov.uz"],
-        TopicCategory.NOSTRIFIKATSIYA: ["nostrifikatsiya", "diplom", "tan olish", "xorijiy", "chet el", "rossiya", "qozog'iston", "qirg'iziston", "top 1000", "top-1000"],
-        TopicCategory.STIPENDIYA: ["stipendiya", "kredit", "ta'lim krediti", "foizsiz", "bank", "moliya", "talim-krediti"],
-        TopicCategory.PEREVOD: ["perevod", "ko'chirish", "transfer", "tiklash", "qayta tiklash", "boshqa oliygoh", "boshqa shahar"]
-    }
-
-    for item in MINISTRY_KNOWLEDGE_BASE:
-        score = 0.0
-        # Title match
-        if any(word in item.title.lower() for word in q_lower.split()):
-            score += 3.0
-
-        # Topic keyword bonus
-        target_words = keyword_map.get(item.topic, [])
-        for word in target_words:
-            if word in q_lower:
-                score += 2.5
-
-        # FAQ queries match
-        for faq in item.faq_questions:
-            if any(term in faq.lower() for term in q_lower.split() if len(term) > 3):
-                score += 1.5
-
-        # Summary match
-        if any(term in item.summary.lower() for term in q_lower.split() if len(term) > 3):
-            score += 1.0
-
-        if score > 0:
-            scores.append((score, item))
-
-    # Sort descending by score
-    scores.sort(key=lambda x: x[0], reverse=True)
-    results = [item for _, item in scores]
-
-    return results[:limit] if results else MINISTRY_KNOWLEDGE_BASE[:limit]
+    """Legacy compatibility search."""
+    ctx = get_complete_legal_context(query, max_faqs=limit)
+    items = []
+    for f in ctx.get("faqs", []):
+        items.append(
+            KnowledgeItem(
+                id=f"faq-{f['id']}",
+                topic=TopicCategory.QABUL,
+                title=f["question"],
+                summary=f["short_answer"],
+                official_regulation=f["legal_basis"],
+                faq_questions=[f["question"]],
+                action_steps=[f["full_answer"]],
+                links=["https://lex.uz"]
+            )
+        )
+    return items if items else MINISTRY_KNOWLEDGE_BASE[:limit]

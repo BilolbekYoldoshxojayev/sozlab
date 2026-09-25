@@ -24,10 +24,9 @@ console.log('✅ [PASS] RoleProtectedPage logic gates verified');
 // 2. Verify all page wrappers and their allowedRoles
 const routeConfigs = [
   { file: 'app/call/page.tsx', route: '/call', allowedRoles: ['citizen'] },
-  { file: 'app/operator/page.tsx', route: '/operator', allowedRoles: ['operator'] },
   { file: 'app/admin/page.tsx', route: '/admin', allowedRoles: ['admin'] },
   { file: 'app/analytics/page.tsx', route: '/analytics', allowedRoles: ['admin'] },
-  { file: 'app/history/page.tsx', route: '/history', allowedRoles: ['operator', 'admin'] },
+  { file: 'app/history/page.tsx', route: '/history', allowedRoles: ['citizen', 'admin'] },
 ];
 
 for (const rc of routeConfigs) {
@@ -42,21 +41,12 @@ for (const rc of routeConfigs) {
 // 3. Matrix verification
 const matrixTests = [
   // Citizen attempting to access
-  { role: 'citizen', route: '/operator', expected: 'DENIED' },
   { role: 'citizen', route: '/admin', expected: 'DENIED' },
   { role: 'citizen', route: '/analytics', expected: 'DENIED' },
-  { role: 'citizen', route: '/history', expected: 'DENIED' },
+  { role: 'citizen', route: '/history', expected: 'ALLOWED' },
   { role: 'citizen', route: '/call', expected: 'ALLOWED' },
 
-  // Operator attempting to access
-  { role: 'operator', route: '/call', expected: 'DENIED' },
-  { role: 'operator', route: '/admin', expected: 'DENIED' },
-  { role: 'operator', route: '/analytics', expected: 'DENIED' },
-  { role: 'operator', route: '/operator', expected: 'ALLOWED' },
-  { role: 'operator', route: '/history', expected: 'ALLOWED' },
-
   // Admin attempting to access
-  { role: 'admin', route: '/operator', expected: 'DENIED' },
   { role: 'admin', route: '/call', expected: 'DENIED' },
   { role: 'admin', route: '/admin', expected: 'ALLOWED' },
   { role: 'admin', route: '/analytics', expected: 'ALLOWED' },
@@ -115,10 +105,9 @@ console.log('\n--- TESTING NAVBAR DYNAMIC FILTERING ---');
 const ALL_NAV_LINKS = [
   { href: '/', allowedRoles: ['citizen'] },
   { href: '/call', allowedRoles: ['citizen'] },
-  { href: '/operator', allowedRoles: ['operator'] },
   { href: '/admin', allowedRoles: ['admin'] },
   { href: '/analytics', allowedRoles: ['admin'] },
-  { href: '/history', allowedRoles: ['operator', 'admin'] },
+  { href: '/history', allowedRoles: ['citizen', 'admin'] },
 ];
 
 function getVisibleLinks(role, isReady) {
@@ -127,12 +116,8 @@ function getVisibleLinks(role, isReady) {
 }
 
 const citizenLinks = getVisibleLinks('citizen', true);
-assert.deepEqual(citizenLinks, ['/', '/call']);
+assert.deepEqual(citizenLinks, ['/', '/call', '/history']);
 console.log('✅ [PASS] Citizen sees only:', citizenLinks);
-
-const operatorLinks = getVisibleLinks('operator', true);
-assert.deepEqual(operatorLinks, ['/operator', '/history']);
-console.log('✅ [PASS] Operator sees only:', operatorLinks);
 
 const adminLinks = getVisibleLinks('admin', true);
 assert.deepEqual(adminLinks, ['/admin', '/analytics', '/history']);
@@ -146,16 +131,13 @@ console.log('✅ [PASS] Pre-ready (SSR) Navbar hides all restricted links:', pre
 console.log('\n--- TESTING STATION REDIRECT TARGETS ---');
 const ROLE_METAS = {
   citizen: { primaryPath: '/call' },
-  operator: { primaryPath: '/operator' },
   admin: { primaryPath: '/admin' },
 };
 
 assert.equal(ROLE_METAS.citizen.primaryPath, '/call');
-assert.equal(ROLE_METAS.operator.primaryPath, '/operator');
 assert.equal(ROLE_METAS.admin.primaryPath, '/admin');
 console.log('✅ [PASS] 403 Redirect buttons route users back to their assigned station:');
 console.log('         - Citizen  -> /call');
-console.log('         - Operator -> /operator');
 console.log('         - Admin    -> /admin');
 
 console.log('\n====================================================');

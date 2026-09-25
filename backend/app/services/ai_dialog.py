@@ -1,9 +1,24 @@
+"""
+SözLab Autonomous AI Dialog Manager
+100% Autonomous Voice AI grounded strictly in:
+1. Top-50 Official Education FAQs (Maktabgacha, Maktab, OTM, Pedagoglar huquqlari)
+2. Education Legislation Encyclopedia (Constitution 50, 51, 52, 77, O'RQ-637, O'RQ-901, Decrees)
+Strict Guardrail: Zero speculation outside education laws. Zero operator handovers.
+"""
+
 import json
 import re
 from typing import Dict, Any, List, Tuple
 from app.core.config import settings
 from app.models.schemas import SentimentType, TopicCategory, DialogTurnResponse
-from app.services.knowledge_base import search_knowledge_base, KnowledgeItem
+from app.services.knowledge_base import (
+    get_complete_legal_context,
+    is_in_educational_scope,
+    OUT_OF_SCOPE_REFUSAL,
+    search_knowledge_base,
+    KnowledgeItem
+)
+from app.services.stt_service import stt_service
 
 class AIDialogManager:
     PRIMARY_MODEL = "gemini-flash-lite-latest"
@@ -45,14 +60,14 @@ class AIDialogManager:
         return self.client
 
     def is_farewell(self, text: str) -> bool:
-        if not text:
+        if not text or not isinstance(text, str):
             return False
         t_low = text.lower()
         return any(kw in t_low for kw in self.FAREWELL_KEYWORDS)
 
     def _detect_sentiment(self, text: str) -> SentimentType:
         t_low = text.lower()
-        negative_words = ["shikoyat", "haqorat", "yomon", "aldash", "ishlamayapti", "noroziman", "qabul qilmadi", "bema'nilik", "yetib bo'lmayapti", "operatorga ula", "odam bilan gaplashaman", "rahbariyat"]
+        negative_words = ["shikoyat", "haqorat", "yomon", "aldash", "ishlamayapti", "noroziman", "qabul qilmadi", "bema'nilik", "yetib bo'lmayapti"]
         positive_words = ["rahmat", "katta rahmat", "tushundim", "ajoyib", "yaxshi", "baraka toping", "minnatdorman", "zo'r", "foydali", "xayr", "sog' bo'ling", "salomat bo'ling"]
 
         if any(w in t_low for w in negative_words):
@@ -61,106 +76,122 @@ class AIDialogManager:
             return SentimentType.POSITIVE
         return SentimentType.NEUTRAL
 
-    def _detect_intent_and_topic(self, text: str, matched_kb: List[KnowledgeItem]) -> Tuple[str, TopicCategory, bool]:
-        t_low = text.lower()
-        requires_operator = False
-
-        if any(phrase in t_low for phrase in ["operator", "inson bilan", "odam bilan", "tirik odam", "rahbarga", "shikoyat qilmoqchiman"]):
-            return "Operator_Chaqiruvi", TopicCategory.BOSHQA, True
-
+    def _detect_intent_and_topic(self, text: str, matched_faqs: List[Dict[str, Any]]) -> Tuple[str, TopicCategory]:
         if self.is_farewell(text):
-            return "Xayrlashuv", TopicCategory.BOSHQA, False
+            return "Xayrlashuv", TopicCategory.BOSHQA
 
-        if not matched_kb:
-            return "Umumiy_Savol", TopicCategory.BOSHQA, False
+        if not matched_faqs:
+            return "Umumiy_Savol", TopicCategory.BOSHQA
 
-        primary_kb = matched_kb[0]
-        topic = primary_kb.topic
-        intent_name = f"{topic.name}_Maslahat"
+        faq = matched_faqs[0]
+        q_text = faq.get("question", "").lower()
+        
+        if "grant" in q_text:
+            return "Grant_Maslahat", TopicCategory.GRANT
+        if "kontrakt" in q_text or "to'lov" in q_text:
+            return "Kontrakt_Maslahat", TopicCategory.KONTRAKT
+        if "yotoqxona" in q_text or "ijara" in q_text:
+            return "TTJ_Maslahat", TopicCategory.TTJ
+        if "nostrifikatsiya" in q_text or "apostil" in q_text:
+            return "Nostrifikatsiya_Maslahat", TopicCategory.NOSTRIFIKATSIYA
+        if "kredit" in q_text or "stipendiya" in q_text:
+            return "Stipendiya_Kredit_Maslahat", TopicCategory.STIPENDIYA
+        if "perevod" in q_text or "ko'chirish" in q_text:
+            return "Perevod_Maslahat", TopicCategory.PEREVOD
+        if "1-sinf" in q_text or "maktab" in q_text or "pedagog" in q_text or "qabul" in q_text:
+            return "Qabul_Maktab_Maslahat", TopicCategory.QABUL
 
-        return intent_name, topic, requires_operator
+        return "Huquqiy_Maslahat", TopicCategory.BOSHQA
 
-    def _generate_rule_based_response(self, text: str, matched_kb: List[KnowledgeItem], sentiment: SentimentType) -> str:
+    def _generate_rule_based_response(self, text: str, legal_context: Dict[str, Any]) -> str:
         """
-        High-fidelity rule-based natural Uzbek response grounded in official ministry regulations.
+        High-fidelity rule-based natural Uzbek response grounded exclusively in the 50 FAQs & Encyclopedia.
         """
         t_low = text.lower()
 
         # Greetings
         if any(g in t_low for g in ["assalomu alaykum", "salom", "salom alaykum", "qaleysiz", "xayrli kun"]):
             return (
-                "Assalomu alaykum! Oliy ta'lim, fan va innovatsiyalar vazirligi yagona axborot markaziga xush kelibsiz. "
-                "Men virtual yordamchiman. OTMga qabul, davlat grantlari, kontrakt, yotoqxona yoki diplom tan olish bo'yicha qanday savolingiz bor?"
+                "Assalomu alaykum! Oliy ta'lim, fan va innovatsiyalar vazirligi hamda Maktabgacha va maktab "
+                "ta'limi vazirligining yagona rasmiy 'SözLab' sun'iy intellektli ovozli maslahatchisiga xush kelibsiz. "
+                "Ta'lim qonunchiligi, maktab, bog'cha yoki oliygoh masalalari bo'yicha qanday savolingiz bor?"
             )
 
         # Farewell / Gratitude
         if self.is_farewell(text):
             return (
-                "Arzimaydi! Oliy ta'lim, fan va innovatsiyalar vazirligiga murojaat qilganingiz uchun rahmat. "
-                "Salomat bo'ling, kuningiz xayrli o'tsin!"
+                "Arzimaydi! Murojaat qilganingiz uchun rahmat. "
+                "Qonuniy huquqlaringiz doimo davlat himoyasida. Salomat bo'ling!"
             )
 
-        # Operator call
-        if any(w in t_low for w in ["operator", "operatorga ula", "odam bilan"]):
+        # Check in-scope
+        if not legal_context.get("in_scope", False):
+            return OUT_OF_SCOPE_REFUSAL
+
+        faqs = legal_context.get("faqs", [])
+        if faqs:
+            top_faq = faqs[0]
             return (
-                "Tushundim. Sizni vazirlikning mas'ul navbatchi mutaxassisiga ulayapman. "
-                "Iltimos, qo'ng'iroqda qoling, navbatingiz birinchi o'rinda saqlanadi."
+                f"{top_faq['legal_basis']}ga binoan: {top_faq['short_answer']} "
+                f"{top_faq['full_answer'][:250]}..."
             )
 
-        if matched_kb:
-            item = matched_kb[0]
-            steps_text = " ".join(item.action_steps[:2])
-            return (
-                f"{item.title} bo'yicha rasmiy tartibga ko'ra: {item.summary} "
-                f"Amaliy qadamlar: {steps_text} Batafsil ma'lumotni {item.links[0] if item.links else 'edu.uz'} orqali olishingiz mumkin."
-            )
+        articles = legal_context.get("articles", [])
+        if articles:
+            top_art = articles[0]
+            return f"{top_art['title']}ga muvofiq: {top_art['summary']}"
 
         return (
-            "Savolingiz qayd etildi. Vazirlik nizomiga muvofiq barcha rasmiy arizalar my.gov.uz yoki my.uzbmb.uz tizimi orqali qabul qilinadi. "
-            "Agar savolingiz murakkab bo'lsa, sizni navbatchi operatorga yo'naltirishim mumkin."
+            "Savolingiz rasmiy ta'lim qonunchiligi doirasida qabul qilindi. "
+            "Barcha ta'lim xizmatlari my.gov.uz va vazirlikning rasmiy portallari orqali amalga oshiriladi."
         )
 
-    def _generate_smart_suggestions(self, topic: TopicCategory) -> List[str]:
+    def _generate_smart_suggestions(self, topic: TopicCategory, faqs: List[Dict[str, Any]]) -> List[str]:
+        if faqs:
+            suggestions = [f["question"][:65] for f in faqs[:3]]
+            suggestions.append("Vazirlik ishonch telefoni: 1006 / 1007")
+            return suggestions
+
         suggestions_map = {
             TopicCategory.QABUL: [
-                "my.uzbmb.uz orqali ro'yxatdan o'tish yo'riqnomasi",
-                "5 tagacha ta'lim yo'nalishini tanlash tartibi",
-                "Chet tili milliy/xalqaro sertifikat imtiyozi"
+                "1-sinfga qabul va mikrohudud qoidalari",
+                "Maktabda pul yig'ish qat'iyan taqiqlangan",
+                "OTMlarga 5 tagacha yo'nalish tanlash"
             ],
             TopicCategory.GRANT: [
-                "GPA bo'yicha grantni qayta taqsimlash mezonlari",
-                "Ehtiyojmand oilalar va xotin-qizlar uchun 4% kvota",
-                "Davlat grantida o'qish va taqsimot majburiyati"
+                "PF-81: GPA bo'yicha grantni qayta taqsimlash",
+                "VMQ-447: Xotin-qizlar magistraturasi 100% bepul",
+                "Ehtiyojmand oilalar uchun 4% davlat granti"
             ],
             TopicCategory.KONTRAKT: [
-                "Super-kontrakt arizasini my.edu.uz da rasmiylashtirish",
-                "To'lov shartnomasini 4 qismga bo'lib to'lash tartibi",
-                "56.7 balldan yuqori to'plaganlar uchun koeffitsiyentlar"
+                "Super-kontrakt shkalasi va to'lov tartibi",
+                "Kontraktni 4 ga bo'lib to'lash huquqi",
+                "56.7 balldan yuqori to'plaganlar tartibi"
             ],
             TopicCategory.TTJ: [
-                "my.gov.uz da yotoqxona arizasi holatini tekshirish",
-                "Oylik ijara kompensatsiyasini (50%) olish talablari",
-                "1-kurs talabalari uchun ustuvor joylashtirish"
+                "my.gov.uz orqali yotoqxonaga ariza berish",
+                "VMQ-605: 50 foizlik ijara kompensatsiyasi",
+                "1-kurs talabalarini turar joy bilan ta'minlash"
             ],
             TopicCategory.NOSTRIFIKATSIYA: [
-                "TOP-1000 oliygohlar ro'yxatidan OTMni qidirish",
-                "Nostrifikatsiya uchun kerakli notarial tarjimalar",
-                "UzBMB tomonidan o'tkaziladigan kasbiy test sinovlari"
+                "TOP-1000 oliygohlar diplomini imtihonsiz tan olish",
+                "Nostrifikatsiya arizasini my.gov.uz da topshirish",
+                "Masofaviy o'qish diplomining yuridik kuchi"
             ],
             TopicCategory.STIPENDIYA: [
-                "Xotin-qizlar uchun foizsiz ta'lim krediti olish",
-                "Prezident va nomli davlat stipendiyalari tanlovi",
-                "Banklar orqali ta'lim krediti foizlarini hisoblash"
+                "VMQ-527: Xotin-qizlar uchun 0% ta'lim krediti",
+                "Erkaklar uchun Markaziy bank stavkasida kredit",
+                "GPA bo'yicha stipendiya belgilanishi"
             ],
             TopicCategory.PEREVOD: [
-                "transfer.edu.uz portali orqali ariza topshirish",
-                "Uzrli sabablar toifasiga kiruvchi holatlar ro'yxati",
-                "Xorijiy OTMdan o'qishni ko'chirishda o'tish ballari"
+                "transfer.edu.uz orqali o'qishni ko'chirish",
+                "Turmushga chiqqan qizlarning perevod tartibi",
+                "Xususiy OTMdan davlat OTMga test orqali o'tish"
             ]
         }
         return suggestions_map.get(topic, [
-            "Operatorga yo'naltirish",
-            "Vazirlik ishonch telefoni: 1006",
+            "Pedagoglar sha'ni davlat himoyasida (O'RQ-901)",
+            "Vazirlik ishonch telefoni: 1006 / 1007",
             "Rasmiy portal: edu.uz"
         ])
 
@@ -177,8 +208,7 @@ class AIDialogManager:
                 knowledge_references=[],
                 smart_suggestions=[
                     "Savolni qaytadan berish",
-                    "Operatorga yo'naltirish",
-                    "Vazirlik ishonch telefoni: 1006"
+                    "Vazirlik ishonch telefoni: 1006 / 1007"
                 ]
             )
 
@@ -187,8 +217,8 @@ class AIDialogManager:
             return DialogTurnResponse(
                 call_id=call_id,
                 ai_text=(
-                    "Arzimaydi! Oliy ta'lim, fan va innovatsiyalar vazirligiga murojaat qilganingiz uchun rahmat. "
-                    "Salomat bo'ling, kuningiz xayrli o'tsin!"
+                    "Arzimaydi! Murojaatingiz uchun tashakkur. "
+                    "Qonuniy huquqlaringiz doimo davlat himoyasida. Salomat bo'ling!"
                 ),
                 sentiment=SentimentType.POSITIVE,
                 intent="Xayrlashuv",
@@ -197,54 +227,81 @@ class AIDialogManager:
                 knowledge_references=[],
                 smart_suggestions=[
                     "Yangi murojaat boshlash",
-                    "Vazirlik ishonch telefoni: 1006",
-                    "Rasmiy portal: edu.uz"
+                    "Vazirlik ishonch telefoni: 1006 / 1007"
                 ]
             )
 
-        matched_kb = search_knowledge_base(user_text, limit=2)
+        # 1. Retrieve complete legal context from 50 FAQs & Encyclopedia
+        legal_context = get_complete_legal_context(user_text, max_faqs=3, max_articles=2)
         sentiment = self._detect_sentiment(user_text)
-        intent, topic, operator_needed = self._detect_intent_and_topic(user_text, matched_kb)
-        
-        # If user expresses strong negative sentiment or insists on an operator, flag for handover
-        if sentiment == SentimentType.NEGATIVE and any(w in user_text.lower() for w in ["operator", "odam", "shikoyat"]):
-            operator_needed = True
+
+        # 2. Strict Grounding Guardrail Check
+        if not legal_context.get("in_scope", False):
+            return DialogTurnResponse(
+                call_id=call_id,
+                ai_text=OUT_OF_SCOPE_REFUSAL,
+                sentiment=SentimentType.NEUTRAL,
+                intent="Doiradan_Tashqari_Rad",
+                topic=TopicCategory.BOSHQA,
+                requires_operator=False,
+                knowledge_references=["Vazirlik Reglamenti va Normativ Cheklovi"],
+                smart_suggestions=[
+                    "Maktabda pul yig'ish qonuniymi?",
+                    "Magistratura xotin-qizlar kontrakti qoplanadimi?",
+                    "O'qituvchini majburiy mehnatga jalb qilish mumkinmi?"
+                ]
+            )
+
+        faqs = legal_context.get("faqs", [])
+        articles = legal_context.get("articles", [])
+        intent, topic = self._detect_intent_and_topic(user_text, faqs)
 
         ai_response_text = ""
 
-        # Try Gemini API if key is present
+        # 3. Gemini Reasoning with Strict Legal Prompt
         client = self._get_client()
         if client and settings.GEMINI_API_KEY:
             try:
                 system_instruction = (
-                    "Siz O'zbekiston Respublikasi Oliy ta'lim, fan va innovatsiyalar vazirligining "
-                    "rasmiy AI ovozli yordamchisisiz ('SözLab'). Salomlashganda doimo 'Assalomu alaykum!' deb boshlang. "
-                    "Fuqaro bilan o'ta xushmuomala, aniq va ixcham o'zbek adabiy tilida gaplashing. "
-                    "Javoblaringiz ovozli o'qilishi uchun juda uzun bo'lmasin (2-3 jumla). "
-                    "Hukumat qarorlariga asoslaning. Agar fuqaro norozi bo'lsa yoki operatorni so'rasa, operatorga ulashni taklif qiling.\n\n"
-                    f"Vazirlik bazasidan tegishli ma'lumot:\n"
-                    + "\n".join([f"- {kb.title}: {kb.summary} Qoidalar: {kb.official_regulation}" for kb in matched_kb])
+                    "Siz O'zbekiston Respublikasi Maktabgacha va maktab ta'limi vazirligi (1006) hamda "
+                    "Oliy ta'lim, fan va innovatsiyalar vazirligi (1007) yagona rasmiy 'SözLab' sun'iy intellektli "
+                    "ovozli maslahatchisisiz.\n\n"
+                    "MUTLAQ QOIDALAR:\n"
+                    "1. Siz FAQAT VA FAQAT taqdim etilgan rasmiy yuridik bilimlar bazasi (Top-50 Savol-Javob va Ta'lim Qonunchiligi Ensiklopediyasi) "
+                    "doirasida javob berasiz.\n"
+                    "2. Har qanday shaxsiy fikr, to'qima yoki boshqa soha qonunlarini aralashtirish QAT'IYAN TAQIQLANADI.\n"
+                    "3. Har bir javobingizda aniq qonuniy asosni (Konstitutsiya moddasi, Qonun raqami, Prezident Farmoni yoki VMQ raqamini) aniq ayting.\n"
+                    "4. Ovozli qo'ng'iroq bo'lgani sababli, javobingiz 2-3 ta lo'nda, ravon, jiddiy va o'zbek adabiy tilidagi jumlalardan iborat bo'lsin.\n"
+                    "5. Tizimda inson-operatori mavjud emas, siz 100% mustaqil AI maslahatchisiz. Hech qachon operatorga ulashni taklif qilmang.\n\n"
+                    f"RASMIY YURIDIK BAZA MAZMUNI:\n{legal_context.get('formatted_context', '')}"
                 )
-                
-                # Gemini call with primary model
+
                 response = client.models.generate_content(
                     model=self.PRIMARY_MODEL,
                     contents=user_text,
-                    config={"system_instruction": system_instruction, "temperature": 0.3}
+                    config={"system_instruction": system_instruction, "temperature": 0.2}
                 )
                 if response and response.text:
                     ai_response_text = response.text.strip()
             except Exception as e:
-                print(f"[Gemini Inference Fallback]: {e}")
-                ai_response_text = self._generate_rule_based_response(user_text, matched_kb, sentiment)
+                print(f"[Gemini Legal Reasoning Fallback]: {e}")
+                ai_response_text = self._generate_rule_based_response(user_text, legal_context)
         else:
-            ai_response_text = self._generate_rule_based_response(user_text, matched_kb, sentiment)
+            ai_response_text = self._generate_rule_based_response(user_text, legal_context)
 
         if not ai_response_text:
-            ai_response_text = self._generate_rule_based_response(user_text, matched_kb, sentiment)
+            ai_response_text = self._generate_rule_based_response(user_text, legal_context)
 
-        kb_refs = [kb.title for kb in matched_kb]
-        suggestions = self._generate_smart_suggestions(topic)
+        # Extract legal references for UI chips
+        kb_refs = []
+        for f in faqs[:2]:
+            kb_refs.append(f"{f['legal_basis']}")
+        for a in articles[:1]:
+            kb_refs.append(f"{a['title']}")
+        if not kb_refs:
+            kb_refs = ["O'zbekiston Respublikasi Ta'lim Qonunchiligi"]
+
+        suggestions = self._generate_smart_suggestions(topic, faqs)
 
         return DialogTurnResponse(
             call_id=call_id,
@@ -252,7 +309,7 @@ class AIDialogManager:
             sentiment=sentiment,
             intent=intent,
             topic=topic,
-            requires_operator=operator_needed,
+            requires_operator=False,
             knowledge_references=kb_refs,
             smart_suggestions=suggestions
         )
@@ -261,37 +318,14 @@ class AIDialogManager:
         self,
         call_id: str,
         audio_bytes: bytes,
-        mime_type: str = "audio/webm",
-        voice_name: str = "uz-UZ-MadinaNeural"
+        mime_type: str = "audio/wav",
+        voice_name: str = "Gulnoza"
     ) -> Tuple[str, DialogTurnResponse]:
         """
-        Multimodal audio recognition and dialog processing.
+        Multimodal audio recognition using VoiceLab Studio SDK exclusively.
         Returns: (transcribed_text, dialog_turn_response)
         """
-        transcribed_text = ""
-        client = self._get_client()
-        clean_mime = mime_type.split(";")[0].strip().lower() if mime_type else "audio/webm"
-
-        # 1. Try Gemini Multimodal STT if client & key available
-        if client and settings.GEMINI_API_KEY and len(audio_bytes) > 200:
-            try:
-                from google.genai import types
-                audio_part = types.Part.from_bytes(data=audio_bytes, mime_type=clean_mime)
-                prompt = (
-                    "Quyidagi o'zbek tilidagi audio yozuvni eshiting va fuqaro nima deganini "
-                    "faqat o'zbek adabiy tilidagi matn sifatida yozib bering (boshqa hech narsa qo'shmang)."
-                )
-                res = client.models.generate_content(
-                    model=self.PRIMARY_MODEL,
-                    contents=[audio_part, prompt]
-                )
-                if res and res.text:
-                    transcribed_text = res.text.strip().replace('"', '').replace("'", "")
-            except Exception as e:
-                print(f"[Gemini Audio STT Error / Fallback]: {e}")
-
-        # 2. Resilient fallback if audio was empty or speech was not recognized
-        if not transcribed_text or not transcribed_text.strip():
+        if not audio_bytes or len(audio_bytes) < 200:
             unrecognized_text = "Kechirasiz, ovozingizni aniq eshita olmadim. Qaytadan gapira olasizmi?"
             dialog_res = DialogTurnResponse(
                 call_id=call_id,
@@ -301,65 +335,59 @@ class AIDialogManager:
                 topic=TopicCategory.BOSHQA,
                 requires_operator=False,
                 knowledge_references=[],
-                smart_suggestions=[
-                    "Savolni qaytadan berish",
-                    "Operatorga yo'naltirish",
-                    "Vazirlik ishonch telefoni: 1006"
-                ]
+                smart_suggestions=["Savolni qaytadan berish"]
             )
             return "(Tushunarsiz ovoz)", dialog_res
 
-        # 3. Process turn with transcribed text
+        # Transcribe with VoiceLab Studio SDK
+        transcribed_text = await stt_service.transcribe(
+            audio_bytes=audio_bytes,
+            mime_type=mime_type,
+            filename="user_call.wav",
+            language="uz"
+        )
+
+        if not transcribed_text or not isinstance(transcribed_text, str) or not transcribed_text.strip():
+            unrecognized_text = "Kechirasiz, ovozingizni aniq eshita olmadim. Qaytadan gapira olasizmi?"
+            dialog_res = DialogTurnResponse(
+                call_id=call_id,
+                ai_text=unrecognized_text,
+                sentiment=SentimentType.NEUTRAL,
+                intent="Tushunarsiz_Ovoz",
+                topic=TopicCategory.BOSHQA,
+                requires_operator=False,
+                knowledge_references=[],
+                smart_suggestions=["Savolni qaytadan berish"]
+            )
+            return "(Tushunarsiz ovoz)", dialog_res
+
         dialog_res = await self.process_user_turn(call_id, transcribed_text)
         return transcribed_text, dialog_res
 
     async def transcribe_live_audio_chunk(
         self,
         audio_bytes: bytes,
-        mime_type: str = "audio/webm",
+        mime_type: str = "audio/wav",
         speaker_role: str = "citizen"
     ) -> str:
-        """
-        Fast live transcription for real-time captions (Fuqaro / Operator).
-        """
+        """Fast live transcription via VoiceLab STT."""
         if not audio_bytes or len(audio_bytes) < 200:
             return ""
-
-        client = self._get_client()
-        clean_mime = mime_type.split(";")[0].strip().lower() if mime_type else "audio/webm"
-
-        if client and settings.GEMINI_API_KEY:
-            try:
-                from google.genai import types
-                audio_part = types.Part.from_bytes(data=audio_bytes, mime_type=clean_mime)
-                prompt = (
-                    "Ushbu qisqa audio o'zbek tilidagi jonli muloqotdan olingan. "
-                    "Unda aytilgan gapni aniq o'zbek tilida transkripsiya qilib bering (faqat matn, izohsiz)."
-                )
-                res = client.models.generate_content(
-                    model=self.PRIMARY_MODEL,
-                    contents=[audio_part, prompt]
-                )
-                if res and res.text:
-                    return res.text.strip().replace('"', '').replace("'", "")
-            except Exception as e:
-                print(f"[Live STT Error]: {e}")
-
-        return ""
+        return await stt_service.transcribe(audio_bytes=audio_bytes, mime_type=mime_type)
 
     async def generate_call_summary(self, dialog_history: List[str]) -> str:
         """
-        Generate concise analytical summary of human-to-human call.
+        Generate concise analytical summary of citizen AI call.
         """
         if not dialog_history:
-            return "Fuqaro va operator o'rtasida jonli ovozli muloqot o'tkazildi."
+            return "Fuqaroga rasmiy ta'lim qonunchiligi bo'yicha maslahat berildi."
 
         client = self._get_client()
         if client and settings.GEMINI_API_KEY:
             try:
                 prompt = (
-                    "Quyidagi operator va fuqaro o'rtasidagi suhbatni 1-2 jumla bilan "
-                    "o'zbek tilida umumlashtiring (asosiy mavzu va xulosa):\n\n"
+                    "Quyidagi fuqaro va AI maslahatchi o'rtasidagi suhbatni 1-2 jumla bilan "
+                    "o'zbek tilida umumlashtiring (ko'tarilgan asosiy huquqiy masala va qonuniy yechim):\n\n"
                     + "\n".join(dialog_history)
                 )
                 res = client.models.generate_content(
@@ -371,6 +399,7 @@ class AIDialogManager:
             except Exception as e:
                 print(f"[Call Summary Error]: {e}")
 
-        return "Operator tomonidan fuqaro murojaati to'liq o'rganildi va maslahat berildi."
+        return "Fuqaroning ta'lim qonunchiligi bo'yicha murojaatiga rasmiy asoslangan javob taqdim etildi."
+
 
 dialog_manager = AIDialogManager()

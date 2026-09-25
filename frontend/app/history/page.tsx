@@ -40,7 +40,7 @@ export default function HistoryPage() {
   };
 
   return (
-    <RoleProtectedPage allowedRoles={['operator', 'admin']}>
+    <RoleProtectedPage allowedRoles={['citizen', 'admin']}>
       <div className="flex flex-col gap-6">
       {/* Header */}
       <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">

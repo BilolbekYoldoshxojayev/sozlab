@@ -4,47 +4,49 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Mic, MicOff, PhoneOff, PhoneCall, Volume2, VolumeX,
-  Headset, Sparkles, RefreshCw, CheckCircle2, Clock,
-  ChevronUp, ChevronDown, Send, MessageSquare, ArrowRight, Home,
-  AlertCircle, ShieldCheck
+  Sparkles, RefreshCw, Send, ArrowRight, ShieldCheck,
+  BookOpen, ExternalLink, HelpCircle
 } from 'lucide-react';
-import { CallRecord, Message, DialogTurnResponse, AudioTurnResponse, TopicCategory } from '@/lib/types';
+import { CallRecord, Message } from '@/lib/types';
 import {
-  startNewCall, sendDialogTurn, sendAudioTurn, transferToOperator,
+  startNewCall, sendDialogTurn, sendAudioTurn,
   completeCall, getAudioFullUrl, getCallWebSocketUrl
 } from '@/lib/api';
 import { AudioRecorder } from '@/lib/audioRecorder';
 import { useRole } from '@/lib/useRole';
-import { WebRTCManager } from '@/lib/webrtcManager';
 
-const QUICK_PROMPTS = [
+const OFFICIAL_50_FAQ_PROMPTS = [
   {
-    category: 'Qabul & Kvota',
-    text: 'OTMlarga qabul qachon boshlanadi va nechta yo\'nalish tanlash mumkin?',
+    category: 'Maktab & Pul Yig\'ish (Savol 2)',
+    text: "Maktabda o'quvchilardan yoki ota-onalardan pul yig'ish (fond, ta'mirlash) qonuniymi?",
   },
   {
-    category: 'Super-kontrakt',
-    text: 'Super-kontrakt arizasini qayerdan yuboraman va to\'lovi qancha?',
+    category: 'Pedagoglar Huquqi (Savol 9)',
+    text: "O'qituvchini majburiy mehnatga (ko'cha tozalash, hashar, obuna) jalb qilish mumkinmi?",
   },
   {
-    category: 'Yotoqxona (TTJ)',
-    text: 'Talabalar turar joyiga my.gov.uz orqali ariza topshirish va ijara kompensatsiyasi qanday olinadi?',
+    category: 'Magistratura Kontrakti (Savol 20)',
+    text: "Davlat OTMlari magistraturasida o'qiyotgan xotin-qizlar kontrakti qanday qoplanadi?",
   },
   {
-    category: 'Nostrifikatsiya',
-    text: 'Xorijiy diplomni tan olish tartibi qanday? TOP-1000 oliygohlar imtihonsiz o\'tadimi?',
+    category: '1-Sinfga Qabul (Savol 1)',
+    text: "Bolani 1-sinfga qabul qilish tartibi va yoshi qanday belgilangan?",
   },
   {
-    category: 'Grant & GPA',
-    text: 'Davlat granti har yili qayta taqsimlanadimi? GPA ballim tushib ketsa nima bo\'ladi?',
+    category: 'Yangi Grant Tizimi (Savol 19)',
+    text: "2024–2026-yillarda davlat grantlari har yili GPA reytingi bo'yicha qanday qayta taqsimlanadi?",
   },
   {
-    category: 'Ta\'lim Krediti',
-    text: 'Talabalar uchun foizsiz ta\'lim krediti kimlarga va qanday tartibda ajratiladi?',
+    category: 'Talaba Ijarasi (Savol 23)',
+    text: "Ijara xonadonida yashaydigan talabalarga davlat tomonidan 50 foiz kompensatsiya qanday to'lanadi?",
   },
   {
-    category: 'Operator Talab',
-    text: 'Mening arizamda muammo bor, iltimos meni zudlik bilan operatorga ulang!',
+    category: '1 Stavka Dars Soati (Savol 33)',
+    text: "Umumta'lim maktablarida o'qituvchilar uchun 1 stavka dars soati necha soat qilib belgilangan?",
+  },
+  {
+    category: 'Inklyuziv Ta\'lim (Savol 38)',
+    text: "Nogironligi bo'lgan bolalar oddiy umumta'lim maktablarida inklyuziv ta'lim ola biladimi?",
   }
 ];
 
@@ -56,20 +58,16 @@ export default function CallSimulator() {
   const [callDuration, setCallDuration] = useState(0);
   const [mode, setMode] = useState<'idle' | 'recording' | 'thinking' | 'speaking'>('idle');
   const [isMuted, setIsMuted] = useState(false);
-  const [selectedVoice, setSelectedVoice] = useState('uz-UZ-MadinaNeural');
   const [wsConnected, setWsConnected] = useState(false);
   const [audioInputLevel, setAudioInputLevel] = useState(0);
   const [micErrorMessage, setMicErrorMessage] = useState<string | null>(null);
   const [isQuickPromptsOpen, setIsQuickPromptsOpen] = useState(false);
   const [customInputText, setCustomInputText] = useState('');
   const [showSummaryModal, setShowSummaryModal] = useState(false);
-  const [operatorAudioLevel, setOperatorAudioLevel] = useState(0);
-  const [liveOperatorCaption, setLiveOperatorCaption] = useState<string | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const audioRecorderRef = useRef<AudioRecorder | null>(null);
-  const webrtcRef = useRef<WebRTCManager | null>(null);
 
   // Initialize AudioRecorder
   useEffect(() => {
@@ -120,814 +118,560 @@ export default function CallSimulator() {
             if (aiMsg.audio_url && !isMuted) {
               playAudioResponse(aiMsg.audio_url);
             } else {
-              setMode('idle');
+              setTimeout(() => setMode('idle'), 2500);
             }
           } else if (data.type === 'new_message') {
-            if (data.message.role !== 'citizen') {
-              setMessages((prev) => [...prev, data.message]);
-            }
-          } else if (data.type === 'call_transferred') {
-            setActiveCall((prev) => (prev ? { ...prev, status: 'waiting_operator' } : null));
-          } else if (data.type === 'queue_update') {
-            setActiveCall((prev) =>
-              prev ? { ...prev, status: 'waiting_operator', queue_position: data.queue_position || data.position } : null
-            );
-          } else if (data.type === 'operator_assigned' || data.type === 'operator_joined') {
-            setActiveCall((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    status: 'operator_handling',
-                    assigned_operator: data.operator_name,
-                    queue_position: undefined,
-                  }
-                : null
-            );
-          } else if (data.type === 'live_caption') {
-            if (data.speaker_role === 'operator') {
-              setLiveOperatorCaption(data.text);
-            }
+            const msg = data.message;
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === msg.id)) return prev;
+              return [...prev, msg];
+            });
+          } else if (data.type === 'ai_thinking') {
+            setMode('thinking');
           } else if (data.type === 'call_completed') {
             setActiveCall((prev) => (prev ? { ...prev, status: 'completed' } : null));
-            setMode('idle');
             setShowSummaryModal(true);
-            webrtcRef.current?.destroy();
-          } else {
-            webrtcRef.current?.handleSignalingMessage(data);
+            setMode('idle');
           }
-        } catch (e) {
-          console.error('[WS Parse Error]:', e);
+        } catch {
+          // ignore
         }
       };
 
-      ws.onclose = () => setWsConnected(false);
-      ws.onerror = () => setWsConnected(false);
+      ws.onerror = () => {
+        setWsConnected(false);
+      };
+
+      ws.onclose = () => {
+        setWsConnected(false);
+      };
 
       wsRef.current = ws;
 
       return () => {
         ws.close();
       };
-    } catch (e) {
-      console.error('[WS Init Error]:', e);
+    } catch {
+      // ws fallback
     }
   }, [activeCall?.id, isMuted]);
 
-  // WebRTC initialization when call transfers to operator
-  useEffect(() => {
-    if (activeCall?.status !== 'operator_handling' || !activeCall?.id) {
-      if (webrtcRef.current) {
-        webrtcRef.current.destroy();
-        webrtcRef.current = null;
-      }
-      return;
-    }
-
-    const webrtc = new WebRTCManager(
-      activeCall.id,
-      'citizen',
-      (payload) => {
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify(payload));
-        }
-      },
-      {
-        onAudioLevels: (localLevel, remoteLevel) => {
-          setAudioInputLevel(localLevel);
-          setOperatorAudioLevel(remoteLevel);
-        },
-        onLiveCaption: (role, name, text) => {
-          if (role === 'operator') {
-            setLiveOperatorCaption(text);
-          }
-        },
-      }
-    );
-
-    webrtc.initialize();
-    webrtcRef.current = webrtc;
-
-    return () => {
-      webrtc.destroy();
-      webrtcRef.current = null;
-    };
-  }, [activeCall?.status, activeCall?.id]);
-
-  const playAudioResponse = (relativeUrl: string) => {
-    const fullUrl = getAudioFullUrl(relativeUrl);
+  // Play audio response with barge-in support
+  const playAudioResponse = (urlPath: string) => {
     if (audioRef.current) {
-      audioRef.current.src = fullUrl;
-      audioRef.current.play().catch((err) => {
-        console.warn('Audio autoplay blocked, user interaction required:', err);
-        setMode('idle');
-      });
-      setMode('speaking');
+      audioRef.current.pause();
     }
+    const fullUrl = getAudioFullUrl(urlPath);
+    const audio = new Audio(fullUrl);
+    audioRef.current = audio;
+
+    audio.onended = () => {
+      setMode('idle');
+    };
+
+    audio.onerror = () => {
+      setMode('idle');
+    };
+
+    audio.play().catch(() => {
+      setMode('idle');
+    });
   };
 
+  // Start Call
   const handleStartCall = async () => {
     try {
-      setMicErrorMessage(null);
-      setShowSummaryModal(false);
-      const callerName = session.citizenName || 'Fuqaro (Abituriyent)';
-      const callerPhone = session.citizenPhone || '+998 (90) 777-88-99';
-      const call = await startNewCall(callerName, callerPhone);
+      setMode('thinking');
+      const citizenName = session.citizenName || 'Fuqaro';
+      const citizenPhone = session.citizenPhone || '+998 (90) 123-45-67';
+
+      const call = await startNewCall(citizenName, citizenPhone);
       setActiveCall(call);
-      setMessages(call.messages);
+      setMessages(call.messages || []);
       setCallDuration(0);
+      setMode('idle');
 
-      // Speak initial greeting
-      const greetingText = call.messages[0]?.text;
-      if (greetingText) {
-        sendDialogTurn(call.id, 'Salom', true, selectedVoice).then((res) => {
-          if (res.audio_url && !isMuted) {
+      // Synthesize initial greeting
+      const initMsg = call.messages?.[0];
+      if (initMsg?.text && !isMuted) {
+        setMode('speaking');
+        try {
+          const res = await sendDialogTurn(call.id, 'Assalomu alaykum', true, 'Gulnoza');
+          if (res.audio_url) {
             playAudioResponse(res.audio_url);
+          } else {
+            setMode('idle');
           }
-        }).catch(() => {});
-      }
-    } catch (err) {
-      console.error('Failed to start call:', err);
-    }
-  };
-
-  const handleEndCall = async () => {
-    if (activeCall) {
-      try {
-        await completeCall(activeCall.id, 'Fuqaro tomonidan qo\'ng\'iroq yakunlandi.');
-      } catch {
-        // ignore
-      }
-      setActiveCall((prev) => (prev ? { ...prev, status: 'completed' } : null));
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-    }
-    if (audioRecorderRef.current) {
-      audioRecorderRef.current.cancel();
-    }
-    setMode('idle');
-    setShowSummaryModal(true);
-  };
-
-  const handleSendMessage = async (textToSend: string) => {
-    const text = textToSend.trim();
-    if (!text || !activeCall) return;
-
-    setCustomInputText('');
-    setIsQuickPromptsOpen(false);
-    setMode('thinking');
-
-    // Optimistic citizen message
-    const tempCitizenMsg: Message = {
-      id: `client-${Date.now()}`,
-      role: 'citizen',
-      text: text,
-      timestamp: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, tempCitizenMsg]);
-
-    try {
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(
-          JSON.stringify({
-            type: 'user_speech',
-            text: text,
-            voice: selectedVoice,
-          })
-        );
-      } else {
-        const res: DialogTurnResponse = await sendDialogTurn(
-          activeCall.id,
-          text,
-          !isMuted,
-          selectedVoice
-        );
-
-        const aiMsg: Message = {
-          id: `ai-${Date.now()}`,
-          role: 'ai',
-          text: res.ai_text,
-          timestamp: new Date().toISOString(),
-          audio_url: res.audio_url,
-          sentiment: res.sentiment,
-          detected_topic: res.topic,
-        };
-
-        setMessages((prev) => [...prev, aiMsg]);
-
-        if (res.audio_url && !isMuted) {
-          playAudioResponse(res.audio_url);
-        } else {
+        } catch {
           setMode('idle');
         }
-
-        if (res.requires_operator) {
-          setActiveCall((prev) => (prev ? { ...prev, status: 'waiting_operator' } : null));
-        }
       }
-    } catch (e) {
-      console.error('[Send Message Error]:', e);
+    } catch (err) {
+      setMode('idle');
+      alert("Qo'ng'iroqni boshlab bo'lmadi. Server bilan aloqani tekshiring.");
+    }
+  };
+
+  // End Call
+  const handleEndCall = async () => {
+    if (!activeCall) return;
+    try {
+      if (audioRecorderRef.current && audioRecorderRef.current.isRecording()) {
+        await audioRecorderRef.current.stop();
+      }
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+
+      await completeCall(activeCall.id, "Muloqot fuqaro tomonidan yakunlandi.");
+      setActiveCall((prev) => (prev ? { ...prev, status: 'completed' } : null));
+      setShowSummaryModal(true);
+      setMode('idle');
+    } catch {
+      setActiveCall((prev) => (prev ? { ...prev, status: 'completed' } : null));
+      setShowSummaryModal(true);
       setMode('idle');
     }
   };
 
-  // Toggle Microphone Recording
+  // Microphone toggle (Barge-in supported: stops previous audio and immediately listens)
   const toggleRecording = async () => {
-    if (!activeCall || activeCall.status === 'completed') {
-      await handleStartCall();
-      return;
+    if (!activeCall || activeCall.status === 'completed') return;
+
+    // Barge-in: interrupt playing audio
+    if (audioRef.current) {
+      audioRef.current.pause();
     }
 
     if (mode === 'recording') {
-      // STOP recording and send audio blob to server
+      // Stop recording and send audio
+      setMode('thinking');
       try {
-        setMode('thinking');
-        if (!audioRecorderRef.current) return;
+        if (!audioRecorderRef.current) throw new Error('Audio recorder unavailable');
         const audioBlob = await audioRecorderRef.current.stop();
+        setAudioInputLevel(0);
 
-        // Send audio turn to backend
-        const res: AudioTurnResponse = await sendAudioTurn(
-          activeCall.id,
-          audioBlob,
-          !isMuted,
-          selectedVoice
-        );
+        if (audioBlob.size < 500) {
+          setMode('idle');
+          return;
+        }
 
-        // Append transcribed citizen message
-        const citizenText = res.user_text || res.transcribed_text || '(Ovozli murojaat)';
-        const citizenMsg: Message = {
-          id: `audio-user-${Date.now()}`,
-          role: 'citizen',
-          text: citizenText,
-          timestamp: new Date().toISOString(),
-          sentiment: res.sentiment,
-        };
+        const res = await sendAudioTurn(activeCall.id, audioBlob, true, 'Gulnoza');
 
-        // Append bot message
-        const botText = res.bot_text || res.ai_text || 'Javob qabul qilindi.';
-        const aiMsg: Message = {
-          id: `audio-bot-${Date.now()}`,
-          role: 'ai',
-          text: botText,
-          timestamp: new Date().toISOString(),
-          audio_url: res.audio_url,
-          sentiment: res.sentiment,
-        };
+        if (res.transcribed_text) {
+          const userMsg: Message = {
+            id: `msg-${Date.now()}`,
+            role: 'citizen',
+            text: res.transcribed_text,
+            timestamp: new Date().toISOString(),
+          };
+          setMessages((prev) => [...prev, userMsg]);
+        }
 
-        setMessages((prev) => [...prev, citizenMsg, aiMsg]);
-
-        if (res.status === 'waiting_operator') {
-          setActiveCall((prev) => (prev ? { ...prev, status: 'waiting_operator', queue_position: res.queue_position } : null));
-        } else if (res.status === 'operator_handling') {
-          setActiveCall((prev) => (prev ? { ...prev, status: 'operator_handling', assigned_operator: res.operator_name } : null));
-        } else if (res.status === 'completed') {
-          setActiveCall((prev) => (prev ? { ...prev, status: 'completed' } : null));
-          setShowSummaryModal(true);
+        if (res.ai_text) {
+          const aiMsg: Message = {
+            id: `ai-${Date.now()}`,
+            role: 'ai',
+            text: res.ai_text,
+            timestamp: new Date().toISOString(),
+            audio_url: res.audio_url,
+          };
+          setMessages((prev) => [...prev, aiMsg]);
         }
 
         if (res.audio_url && !isMuted) {
+          setMode('speaking');
           playAudioResponse(res.audio_url);
         } else {
           setMode('idle');
         }
-      } catch (err: unknown) {
-        console.error('Audio recording upload failed:', err);
+      } catch (err: any) {
         setMode('idle');
-        setMicErrorMessage('Ovozli xabarni yuborishda xatolik yuz berdi. Iltimos qaytadan urining.');
+        setMicErrorMessage(err.message || 'Ovoz yozishda xatolik');
+        setTimeout(() => setMicErrorMessage(null), 4000);
       }
     } else {
-      // START recording
+      // Start recording
       try {
         setMicErrorMessage(null);
-        if (!AudioRecorder.isSupported()) {
-          setMicErrorMessage('Brauzeringiz mikrofon orqali yozishni qo\'llab-quvvatlamaydi.');
-          return;
-        }
-        await audioRecorderRef.current?.start();
+        if (!audioRecorderRef.current) throw new Error('Audio recorder unavailable');
+        await audioRecorderRef.current.start();
         setMode('recording');
-      } catch (err: unknown) {
-        console.warn('Microphone start error:', err);
-        setMicErrorMessage('Mikrofon ruxsatnomasi berilmadi yoki mavjud emas. Quyidagi tezkor savollardan foydalanishingiz mumkin.');
+      } catch (err: any) {
         setMode('idle');
+        setMicErrorMessage("Mikrofon ruxsati berilmadi. Iltimos, brauzerda mikrofonga ruxsat bering.");
+        setTimeout(() => setMicErrorMessage(null), 5000);
       }
     }
   };
 
-  const handleTransferToOperator = async () => {
-    if (!activeCall) return;
+  // Text Prompt Send
+  const handleSendTextPrompt = async (textToSend: string) => {
+    if (!activeCall || activeCall.status === 'completed' || !textToSend.trim()) return;
+
+    // Barge-in: interrupt playing audio
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+
+    setMode('thinking');
+    const promptText = textToSend.trim();
+    setCustomInputText('');
+
+    const userMsg: Message = {
+      id: `msg-${Date.now()}`,
+      role: 'citizen',
+      text: promptText,
+      timestamp: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, userMsg]);
+
     try {
-      const res = await transferToOperator(activeCall.id, 'Fuqaro mustaqil ravishda operatorni tanladi');
-      setActiveCall(res);
-      const sysMsg: Message = {
-        id: `sys-${Date.now()}`,
-        role: 'system',
-        text: res.status === 'operator_handling'
-          ? `Qo'ng'iroq muvaffaqiyatli ${res.assigned_operator || 'operator'} ga ulandi!`
-          : `Qo'ng'iroq operator navbatiga qo'yildi. Siz navbatda ${res.queue_position || 1}-o'rindasiz.`,
+      const res = await sendDialogTurn(activeCall.id, promptText, true, 'Gulnoza');
+
+      const aiMsg: Message = {
+        id: `ai-${Date.now()}`,
+        role: 'ai',
+        text: res.ai_text,
         timestamp: new Date().toISOString(),
+        audio_url: res.audio_url,
       };
-      setMessages((prev) => [...prev, sysMsg]);
-    } catch (e) {
-      console.error('Transfer failed:', e);
+      setMessages((prev) => [...prev, aiMsg]);
+
+      if (res.audio_url && !isMuted) {
+        setMode('speaking');
+        playAudioResponse(res.audio_url);
+      } else {
+        setMode('idle');
+      }
+    } catch {
+      setMode('idle');
     }
   };
 
+  // Format seconds to mm:ss
   const formatTime = (secs: number) => {
     const mins = Math.floor(secs / 60);
-    const remainingSecs = secs % 60;
-    return `${mins.toString().padStart(2, '0')}:${remainingSecs.toString().padStart(2, '0')}`;
+    const s = secs % 60;
+    return `${mins.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  // Determine latest turn messages for live Closed Captions
-  const lastAiOrOpMessage = [...messages].reverse().find((m) => m.role === 'ai' || m.role === 'operator');
-  const lastCitizenMessage = [...messages].reverse().find((m) => m.role === 'citizen');
-
-  // Live Operator Call Mode flags
-  const isOperatorActive = activeCall?.status === 'operator_handling';
-  const isOperatorSpeaking = operatorAudioLevel > 0.08;
-  const isCitizenSpeaking = audioInputLevel > 0.08;
-
-  // Closed caption display text
-  let liveCaptionSpeaker = 'SözLab AI';
-  let liveCaptionText = 'O\'zbek tilida savolingizni bering...';
-
-  if (isOperatorActive) {
-    liveCaptionSpeaker = isOperatorSpeaking ? (activeCall.assigned_operator || 'Operator') : 'Siz (Fuqaro)';
-    liveCaptionText = liveOperatorCaption || (isOperatorSpeaking ? 'Operator mikrofondan gapirmoqda...' : 'Operator bilan audio muloqot faol');
-  } else if (mode === 'recording') {
-    liveCaptionSpeaker = 'Siz (Fuqaro)';
-    liveCaptionText = 'Tinglanmoqda... Istalgan savolingizni bering.';
-  } else if (mode === 'thinking') {
-    liveCaptionSpeaker = 'SözLab AI';
-    liveCaptionText = 'Javob shakllantirilmoqda...';
-  } else if (mode === 'speaking' && lastAiOrOpMessage) {
-    liveCaptionSpeaker = lastAiOrOpMessage.role === 'operator' ? (activeCall?.assigned_operator || 'Operator') : 'SözLab AI';
-    liveCaptionText = lastAiOrOpMessage.text;
-  } else if (lastAiOrOpMessage) {
-    liveCaptionSpeaker = lastAiOrOpMessage.role === 'operator' ? (activeCall?.assigned_operator || 'Operator') : 'SözLab AI';
-    liveCaptionText = lastAiOrOpMessage.text;
-  } else if (lastCitizenMessage) {
-    liveCaptionSpeaker = 'Siz (Fuqaro)';
-    liveCaptionText = lastCitizenMessage.text;
-  }
-
-  // Voice Orb Scale Calculation
-  const orbScale = isOperatorActive
-    ? isOperatorSpeaking
-      ? 1 + operatorAudioLevel * 0.55
-      : isCitizenSpeaking
-      ? 1 + audioInputLevel * 0.45
-      : 1
-    : mode === 'recording'
-    ? 1 + audioInputLevel * 0.45
-    : 1;
+  // Latest messages for subtitle display
+  const latestAiMessage = [...messages].reverse().find((m) => m.role === 'ai');
+  const latestCitizenMessage = [...messages].reverse().find((m) => m.role === 'citizen');
 
   return (
-    <div className="relative w-full h-[calc(100vh-4.5rem)] overflow-hidden flex flex-col justify-between bg-gradient-to-b from-slate-950 via-[#07172c] to-[#040e1c] text-white select-none">
-      {/* Hidden audio element for TTS playback */}
-      <audio
-        ref={audioRef}
-        onEnded={() => setMode('idle')}
-        onError={() => setMode('idle')}
-        className="hidden"
-      />
-
-      {/* Atmospheric Background Glows */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-1/3 left-1/2 -translate-x-1/2 w-[400px] h-[400px] bg-emerald-500/10 rounded-full blur-[100px] pointer-events-none" />
-
-      {/* TOP MINIMAL BAR: Status, Timer, Voice Picker, Quick Questions */}
-      <div className="relative z-20 px-4 sm:px-8 pt-4 pb-2 flex items-center justify-between">
-        {/* Caller & Connection Status */}
+    <div className="relative h-[calc(100vh-4rem)] w-full overflow-hidden bg-zinc-950 text-zinc-100 flex flex-col justify-between select-none">
+      {/* Top Status Bar */}
+      <div className="w-full px-4 sm:px-8 py-3.5 border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur-md flex items-center justify-between z-20">
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/10 text-xs">
-            <span
-              className={`w-2.5 h-2.5 rounded-full ${
-                activeCall && activeCall.status !== 'completed'
-                  ? activeCall.status === 'waiting_operator'
-                    ? 'bg-amber-400 animate-ping'
-                    : 'bg-emerald-400 animate-pulse'
-                  : 'bg-slate-400'
-              }`}
-            />
-            <span className="font-semibold text-slate-200">
-              {activeCall
-                ? activeCall.status === 'ai_handling'
-                  ? 'AI Yordamchi'
-                  : activeCall.status === 'waiting_operator'
-                  ? `Navbatda (#${activeCall.queue_position || 1})`
-                  : activeCall.status === 'operator_handling'
-                  ? `Operator: ${activeCall.assigned_operator || 'Jonli'}`
-                  : 'Yakunlangan'
-                : 'Qo\'ng\'iroq Kutilmoqda'}
-            </span>
-            <span className="text-slate-400">•</span>
-            <span className="font-mono text-emerald-300 font-bold">
-              {formatTime(callDuration)}
-            </span>
-          </div>
-
-          {/* WS Status Badge */}
-          <span className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-[11px] text-slate-300">
-            <span className={`w-1.5 h-1.5 rounded-full ${wsConnected ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-            <span>{wsConnected ? 'Jonli Oqim' : 'Standart'}</span>
-          </span>
-        </div>
-
-        {/* Center / Right controls */}
-        <div className="flex items-center gap-2">
-          {/* Voice Model Selector Pill */}
-          <div className="flex items-center bg-white/10 backdrop-blur-md border border-white/10 rounded-full px-2.5 py-1 text-xs">
-            <Volume2 className="w-3.5 h-3.5 text-blue-400 mr-1.5" />
-            <select
-              value={selectedVoice}
-              onChange={(e) => setSelectedVoice(e.target.value)}
-              className="bg-transparent text-slate-200 font-semibold text-xs focus:outline-none cursor-pointer pr-1"
-            >
-              <option value="uz-UZ-MadinaNeural" className="bg-slate-900 text-white">Madina (Ayol)</option>
-              <option value="uz-UZ-SardorNeural" className="bg-slate-900 text-white">Sardor (Erkak)</option>
-            </select>
-          </div>
-
-          {/* Quick Prompts Toggle */}
-          {!isOperatorActive && (
-            <button
-              onClick={() => setIsQuickPromptsOpen((prev) => !prev)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/10 text-xs font-semibold text-amber-300 transition active:scale-95"
-              title="Tezkor savollar panelini ochish"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span className="hidden sm:inline">Tezkor Savollar</span>
-              {isQuickPromptsOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Mic error notice */}
-      {micErrorMessage && (
-        <div className="relative z-30 mx-auto max-w-md px-4 py-2 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-200 text-xs flex items-center gap-2 animate-fade-in">
-          <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
-          <span>{micErrorMessage}</span>
-        </div>
-      )}
-
-      {/* CENTER: LARGE DYNAMIC PULSATING VOICE ORB */}
-      <div className="relative flex-1 flex flex-col items-center justify-center py-2 sm:py-6 overflow-hidden">
-        <div className="relative flex items-center justify-center">
-          {/* Outer Pulsating Halo Rings */}
-          {mode === 'recording' && (
-            <>
-              <div
-                style={{ transform: `scale(${1.2 + audioInputLevel * 0.7})` }}
-                className="absolute w-56 h-56 sm:w-72 sm:h-72 rounded-full bg-emerald-500/20 blur-2xl transition-transform duration-75 pointer-events-none"
-              />
-              <div
-                style={{ transform: `scale(${1.1 + audioInputLevel * 0.4})` }}
-                className="absolute w-52 h-52 sm:w-64 sm:h-64 rounded-full border-2 border-emerald-400/40 bg-emerald-500/10 transition-transform duration-75 pointer-events-none"
-              />
-            </>
-          )}
-
-          {mode === 'speaking' && (
-            <>
-              <div className="absolute w-60 h-60 sm:w-80 sm:h-80 rounded-full bg-blue-500/25 blur-3xl animate-pulse pointer-events-none" />
-              <div className="absolute w-52 h-52 sm:w-68 sm:h-68 rounded-full border border-cyan-400/30 animate-ping pointer-events-none opacity-40" />
-            </>
-          )}
-
-          {mode === 'thinking' && (
-            <div className="absolute w-56 h-56 sm:w-72 sm:h-72 rounded-full border-2 border-dashed border-amber-400/60 animate-spin pointer-events-none" />
-          )}
-
-          {mode === 'idle' && (
-            <div className="absolute w-48 h-48 sm:w-60 sm:h-60 rounded-full bg-blue-600/10 blur-xl animate-pulse pointer-events-none" />
-          )}
-
-          {/* Core Voice Orb */}
-          <div
-            onClick={toggleRecording}
-            style={{ transform: `scale(${orbScale})` }}
-            className={`cursor-pointer relative z-10 w-44 h-44 sm:w-56 sm:h-56 rounded-full flex flex-col items-center justify-center transition-all duration-150 select-none shadow-2xl active:scale-95 ${
-              mode === 'recording'
-                ? 'bg-gradient-to-tr from-emerald-600 via-teal-500 to-cyan-400 shadow-[0_0_70px_rgba(16,185,129,0.55)] border-4 border-emerald-300/80'
-                : mode === 'speaking'
-                ? 'bg-gradient-to-tr from-blue-600 via-indigo-500 to-cyan-400 shadow-[0_0_70px_rgba(59,130,246,0.55)] border-4 border-cyan-300/80 animate-pulse'
-                : mode === 'thinking'
-                ? 'bg-gradient-to-tr from-amber-600 via-orange-500 to-yellow-400 shadow-[0_0_60px_rgba(245,158,11,0.5)] border-4 border-amber-300/80'
-                : 'bg-gradient-to-tr from-slate-900 via-blue-950 to-indigo-950 shadow-[0_0_40px_rgba(59,130,246,0.3)] border-2 border-blue-500/40 hover:border-blue-400 hover:shadow-[0_0_50px_rgba(59,130,246,0.5)]'
-            }`}
-          >
-            {/* Visual Centerpiece Icon/Wave */}
-            {mode === 'recording' ? (
-              <div className="flex flex-col items-center gap-2">
-                <Mic className="w-12 h-12 sm:w-16 sm:h-16 text-white drop-shadow-md animate-bounce" />
-                <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-100">
-                  Tinglanmoqda...
-                </span>
-              </div>
-            ) : mode === 'speaking' ? (
-              <div className="flex flex-col items-center gap-3">
-                <div className="flex items-center gap-1.5 h-10">
-                  <span className="w-1.5 h-6 bg-white rounded-full animate-bounce [animation-delay:-0.3s]" />
-                  <span className="w-1.5 h-10 bg-white rounded-full animate-bounce [animation-delay:-0.15s]" />
-                  <span className="w-1.5 h-8 bg-white rounded-full animate-bounce" />
-                  <span className="w-1.5 h-10 bg-white rounded-full animate-bounce [animation-delay:-0.2s]" />
-                  <span className="w-1.5 h-5 bg-white rounded-full animate-bounce [animation-delay:-0.4s]" />
-                </div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-cyan-100">
-                  SözLab AI Javobi
-                </span>
-              </div>
-            ) : mode === 'thinking' ? (
-              <div className="flex flex-col items-center gap-2">
-                <RefreshCw className="w-12 h-12 sm:w-14 sm:h-14 text-white animate-spin" />
-                <span className="text-[11px] font-bold uppercase tracking-wider text-amber-100">
-                  O&apos;ylamoqda...
-                </span>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center gap-2">
-                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-blue-500/20 border border-blue-400/40 flex items-center justify-center text-blue-300">
-                  <PhoneCall className="w-7 h-7 sm:w-8 sm:h-8" />
-                </div>
-                <span className="text-[11px] font-semibold text-slate-300">
-                  {activeCall ? 'Gapirish uchun bosing' : 'Qo\'ng\'iroqni boshlash'}
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Dynamic Orb Helper Description */}
-        <p className="mt-4 text-xs font-medium text-slate-400 text-center tracking-wide">
-          {mode === 'recording'
-            ? 'Tinglanmoqda... To\'xtatish uchun bosing'
-            : mode === 'speaking'
-            ? 'Ovozli javob berilmoqda...'
-            : mode === 'thinking'
-            ? 'Javob tayyorlanmoqda...'
-            : activeCall
-            ? '1006 ishonch liniyasi faol'
-            : 'Qo\'ng\'iroqni boshlash uchun bosing'}
-        </p>
-      </div>
-
-      {/* CLOSED CAPTIONS: SLEEK 2-LINE LIVE SUBTITLE BOX */}
-      <div className="relative z-20 px-4 sm:px-8 my-2">
-        <div className="max-w-2xl mx-auto rounded-2xl bg-slate-900/80 backdrop-blur-xl border border-white/10 p-4 shadow-xl">
-          <div className="flex items-center justify-between mb-1.5">
+          <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+          <div>
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-              <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-300">
-                {liveCaptionSpeaker}
+              <span className="text-xs font-semibold tracking-wider text-zinc-200 uppercase">
+                1006 / 1007 Yagona Ovozli Markaz
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400 font-mono">
+                100% Avtonom AI
               </span>
             </div>
-            <span className="text-[10px] text-slate-400">
-              Jonli Subtitr (Closed Captions)
-            </span>
+            <p className="text-[11px] text-zinc-500 font-mono">
+              VoiceLab Studio • Gulnoza (O&apos;zbek) • 50 ta Rasmiy FAQ Baza
+            </p>
           </div>
-
-          <p className="text-xs sm:text-sm font-medium text-slate-100 line-clamp-2 leading-relaxed min-h-[2.5rem]">
-            {liveCaptionText}
-          </p>
         </div>
-      </div>
 
-      {/* FLOATING GLASSMORPHIC BOTTOM CONTROL DOCK */}
-      <div className="relative z-30 px-4 sm:px-8 pb-5 pt-2">
-        <div className="max-w-lg mx-auto bg-slate-900/85 backdrop-blur-2xl border border-white/15 rounded-3xl p-3 sm:p-4 shadow-2xl flex items-center justify-center gap-4 sm:gap-6">
-          {/* Button 1: Mute / Unmute */}
+        <div className="flex items-center gap-3">
+          {activeCall && activeCall.status !== 'completed' && (
+            <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-300">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>{formatTime(callDuration)}</span>
+            </div>
+          )}
+
           <button
-            onClick={() => setIsMuted((prev) => !prev)}
-            className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex flex-col items-center justify-center transition-all active:scale-95 border ${
+            onClick={() => setIsMuted(!isMuted)}
+            className={`p-2 rounded-lg border transition ${
               isMuted
-                ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
-                : 'bg-white/10 border-white/15 text-slate-200 hover:bg-white/20'
+                ? 'bg-zinc-800 border-zinc-700 text-zinc-400'
+                : 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:text-white'
             }`}
-            title={isMuted ? 'Ovozni yoqish' : 'Ovozni o\'chirish (Mute)'}
+            title={isMuted ? "Ovozni yoqish" : "Ovozni o'chirish"}
           >
-            {isMuted ? <VolumeX className="w-5 h-5 sm:w-6 sm:h-6" /> : <Volume2 className="w-5 h-5 sm:w-6 sm:h-6" />}
-            <span className="text-[9px] mt-0.5 font-semibold text-slate-300">
-              {isMuted ? 'Mute' : 'Ovoz'}
-            </span>
-          </button>
-
-          {/* Button 2: Speak / Microphone (Main Action) */}
-          <button
-            onClick={toggleRecording}
-            disabled={mode === 'thinking'}
-            className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full flex flex-col items-center justify-center shadow-xl transition-all active:scale-95 disabled:opacity-50 ${
-              mode === 'recording'
-                ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/40 animate-pulse border-2 border-rose-300'
-                : !activeCall || activeCall.status === 'completed'
-                ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/40 border-2 border-emerald-300'
-                : 'bg-gradient-to-tr from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-white shadow-emerald-500/30 border-2 border-emerald-200'
-            }`}
-            title={mode === 'recording' ? 'Yozishni to\'xtatish' : 'Gapirish (Mikrofon)'}
-          >
-            {mode === 'recording' ? (
-              <>
-                <MicOff className="w-7 h-7 sm:w-8 sm:h-8" />
-                <span className="text-[9px] font-bold mt-0.5">To&apos;xtatish</span>
-              </>
-            ) : mode === 'thinking' ? (
-              <>
-                <RefreshCw className="w-6 h-6 sm:w-7 sm:h-7 animate-spin" />
-                <span className="text-[9px] font-bold mt-0.5">Kuting</span>
-              </>
-            ) : (
-              <>
-                <Mic className="w-7 h-7 sm:w-8 sm:h-8" />
-                <span className="text-[9px] font-bold mt-0.5">
-                  {!activeCall ? 'Boshlash' : 'Gapirish'}
-                </span>
-              </>
-            )}
-          </button>
-
-          {/* Button 3: Operatorga ulash (Transfer) */}
-          <button
-            onClick={handleTransferToOperator}
-            disabled={!activeCall || activeCall.status === 'completed' || activeCall.status === 'operator_handling'}
-            className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex flex-col items-center justify-center transition-all active:scale-95 border disabled:opacity-40 disabled:cursor-not-allowed ${
-              activeCall?.status === 'operator_handling'
-                ? 'bg-blue-600 border-blue-400 text-white shadow-lg shadow-blue-600/30'
-                : activeCall?.status === 'waiting_operator'
-                ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 animate-pulse'
-                : 'bg-white/10 border-white/15 text-slate-200 hover:bg-white/20'
-            }`}
-            title="Inson-operatorga yo'naltirish"
-          >
-            <Headset className="w-5 h-5 sm:w-6 sm:h-6" />
-            <span className="text-[9px] mt-0.5 font-semibold text-slate-300">
-              {activeCall?.status === 'operator_handling' ? 'Ulangan' : 'Operator'}
-            </span>
-          </button>
-
-          {/* Button 4: Red "Tugatish" (End Call) */}
-          <button
-            onClick={handleEndCall}
-            disabled={!activeCall || activeCall.status === 'completed'}
-            className="w-12 h-12 sm:w-14 sm:h-14 rounded-full flex flex-col items-center justify-center bg-rose-600/90 hover:bg-rose-600 text-white shadow-lg shadow-rose-600/30 transition-all active:scale-95 border border-rose-500 disabled:opacity-40 disabled:cursor-not-allowed"
-            title="Qo'ng'iroqni tugatish"
-          >
-            <PhoneOff className="w-5 h-5 sm:w-6 sm:h-6" />
-            <span className="text-[9px] mt-0.5 font-semibold text-rose-100">
-              Tugatish
-            </span>
+            {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
           </button>
         </div>
       </div>
 
-      {/* QUICK DEMO PROMPTS & TEXT INPUT DRAWER */}
-      {isQuickPromptsOpen && (
-        <div className="absolute inset-x-0 bottom-24 z-40 max-w-3xl mx-auto px-4 animate-in slide-in-from-bottom duration-200">
-          <div className="bg-slate-900/95 backdrop-blur-2xl border border-slate-700 rounded-3xl p-5 shadow-2xl text-white">
-            <div className="flex items-center justify-between mb-3 border-b border-slate-800 pb-2">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-amber-400" />
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-200">
-                  Tezkor Savollar
-                </h4>
-              </div>
-              <button
-                onClick={() => setIsQuickPromptsOpen(false)}
-                className="text-xs text-slate-400 hover:text-white"
-              >
-                Yopish ✕
-              </button>
+      {/* Main Center Stage: Acoustic Voice Orb & Real-Time Captions */}
+      <div className="flex-1 flex flex-col items-center justify-center px-4 relative z-10">
+        {!activeCall ? (
+          /* Idle Call Initiation Banner */
+          <div className="text-center max-w-lg mx-auto animate-fade-in">
+            <div className="w-20 h-20 mx-auto rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-200 mb-6 shadow-xl">
+              <PhoneCall className="w-10 h-10 text-zinc-200" />
             </div>
 
-            {/* Quick buttons grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">
-              {QUICK_PROMPTS.map((p, idx) => (
-                <button
-                  key={idx}
-                  disabled={!activeCall || activeCall.status === 'completed' || mode === 'thinking'}
-                  onClick={() => handleSendMessage(p.text)}
-                  className="text-left p-2.5 rounded-xl border border-slate-800 bg-slate-800/60 hover:bg-blue-900/40 hover:border-blue-500/50 transition-all text-xs group disabled:opacity-40"
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-bold text-blue-300 bg-blue-500/20 px-1.5 py-0.5 rounded">
-                      {p.category}
-                    </span>
-                    <span className="text-[10px] text-slate-400 group-hover:text-blue-300">
-                      Yuborish →
-                    </span>
-                  </div>
-                  <p className="text-slate-200 line-clamp-1 text-[11px]">
-                    {p.text}
-                  </p>
-                </button>
-              ))}
-            </div>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white mb-2">
+              SözLab Ovozli Maslahatchi
+            </h1>
+            <p className="text-xs sm:text-sm text-zinc-400 mb-8 leading-relaxed">
+              O&apos;zbekiston Respublikasi ta&apos;lim qonunchiligi (Maktab, Bog&apos;cha, OTM qabuli, Davlat grantlari, Pedagoglar huquqlari) bo&apos;yicha savollaringizga rasmiy moddalar bilan to&apos;g&apos;ridan-to&apos;g&apos;ri ovozli javob oling.
+            </p>
 
-            {/* Optional text message input */}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSendMessage(customInputText);
-              }}
-              className="mt-3 pt-3 border-t border-slate-800 flex items-center gap-2"
+            <button
+              onClick={handleStartCall}
+              className="py-3.5 px-8 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-sm shadow-xl transition active:scale-95 flex items-center justify-center gap-2.5 mx-auto"
             >
-              <input
-                type="text"
-                value={customInputText}
-                onChange={(e) => setCustomInputText(e.target.value)}
-                disabled={!activeCall || activeCall.status === 'completed' || mode === 'thinking'}
-                placeholder="Yoki savolingizni matn ko'rinishida yozing..."
-                className="flex-1 bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              <PhoneCall className="w-4 h-4" />
+              <span>Qo&apos;ng&apos;iroqni boshlash</span>
+            </button>
+          </div>
+        ) : (
+          /* Live Acoustic Orb Experience */
+          <div className="flex flex-col items-center justify-center w-full max-w-2xl text-center">
+            {/* Precision Monochrome Acoustic Voice Orb */}
+            <div className="relative flex items-center justify-center w-64 h-64 sm:w-72 sm:h-72 my-4">
+              {/* Outer Acoustic Pulse Rings */}
+              <div
+                className={`absolute inset-0 rounded-full border border-zinc-800 transition-all duration-700 ${
+                  mode === 'recording'
+                    ? 'scale-110 border-emerald-500/40 bg-emerald-500/5'
+                    : mode === 'speaking'
+                    ? 'scale-105 border-zinc-700/80 bg-zinc-800/10'
+                    : 'scale-95 border-zinc-800/40'
+                }`}
               />
-              <button
-                type="submit"
-                disabled={!customInputText.trim() || !activeCall || activeCall.status === 'completed' || mode === 'thinking'}
-                className="p-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition disabled:opacity-40"
+
+              <div
+                className={`absolute inset-6 rounded-full border border-zinc-800/80 transition-all duration-500 ${
+                  mode === 'recording'
+                    ? 'scale-105 border-emerald-500/60'
+                    : mode === 'thinking'
+                    ? 'rotate-180 border-dashed border-zinc-600'
+                    : 'scale-95 border-zinc-800/60'
+                }`}
+              />
+
+              {/* Core Orb Center */}
+              <div
+                className={`relative w-36 h-36 sm:w-40 sm:h-40 rounded-full border flex flex-col items-center justify-center transition-all duration-300 shadow-2xl cursor-pointer select-none ${
+                  mode === 'recording'
+                    ? 'bg-zinc-900 border-emerald-500 shadow-emerald-950/40 scale-105'
+                    : mode === 'thinking'
+                    ? 'bg-zinc-900 border-zinc-700 animate-pulse'
+                    : mode === 'speaking'
+                    ? 'bg-zinc-900 border-zinc-600 shadow-zinc-900/60'
+                    : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'
+                }`}
+                onClick={toggleRecording}
               >
-                <Send className="w-4 h-4" />
+                {mode === 'recording' ? (
+                  <Mic className="w-10 h-10 text-emerald-400 animate-pulse" />
+                ) : mode === 'thinking' ? (
+                  <RefreshCw className="w-8 h-8 text-zinc-400 animate-spin" />
+                ) : mode === 'speaking' ? (
+                  <Volume2 className="w-10 h-10 text-zinc-200" />
+                ) : (
+                  <Mic className="w-10 h-10 text-zinc-400" />
+                )}
+
+                <span className="text-[11px] font-medium tracking-wide mt-2 text-zinc-300">
+                  {mode === 'recording'
+                    ? 'Tinglamoqda...'
+                    : mode === 'thinking'
+                    ? 'Qidirmoqda...'
+                    : mode === 'speaking'
+                    ? 'Javob bermoqda'
+                    : 'Gapirish uchun bosing'}
+                </span>
+              </div>
+            </div>
+
+            {/* Error Notification if mic is blocked */}
+            {micErrorMessage && (
+              <div className="mb-4 px-3.5 py-1.5 rounded-lg bg-zinc-900 border border-red-500/30 text-red-400 text-xs">
+                {micErrorMessage}
+              </div>
+            )}
+
+            {/* Real-Time Subtitles & Legal Citations */}
+            <div className="w-full min-h-[110px] flex flex-col items-center justify-center mt-2 px-4">
+              {latestCitizenMessage && (
+                <div className="text-xs text-zinc-400 mb-2 font-mono flex items-center gap-1.5">
+                  <span className="text-zinc-500">Siz:</span>
+                  <span className="text-zinc-300 italic">&ldquo;{latestCitizenMessage.text}&rdquo;</span>
+                </div>
+              )}
+
+              {latestAiMessage ? (
+                <div className="max-w-xl animate-fade-in">
+                  <p className="text-sm sm:text-base font-medium text-zinc-100 leading-relaxed">
+                    {latestAiMessage.text}
+                  </p>
+
+                  {/* Interactive Legal Citation Badges */}
+                  <div className="flex flex-wrap items-center justify-center gap-1.5 mt-3">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-[11px] font-mono text-zinc-400">
+                      <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                      <span>Rasmiy Ta&apos;lim Qonunchiligi</span>
+                    </span>
+                    <a
+                      href="https://lex.uz"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-[11px] font-mono text-zinc-400 hover:text-zinc-200 transition"
+                    >
+                      <span>lex.uz</span>
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-zinc-500 italic font-mono">
+                  Mikrofon tugmasini bosing yoki quyidagi rasmiy savollardan birini tanlang.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Bottom Interactive Control Center */}
+      {activeCall && activeCall.status !== 'completed' && (
+        <div className="w-full border-t border-zinc-800/80 bg-zinc-950/90 backdrop-blur-md px-4 sm:px-8 py-3.5 z-20">
+          <div className="max-w-3xl mx-auto flex flex-col gap-3">
+            {/* Quick Prompts Carousel Accordion */}
+            {isQuickPromptsOpen && (
+              <div className="p-3 bg-zinc-900/90 border border-zinc-800 rounded-xl mb-1 max-h-48 overflow-y-auto space-y-1.5 animate-fade-in">
+                <div className="flex items-center justify-between text-[11px] text-zinc-400 font-mono px-1 pb-1 border-b border-zinc-800">
+                  <span>TOP-50 RASMIY SAVOL-JAVOB BAZASI (YURIDIK TIZIM)</span>
+                  <span className="text-zinc-500">Bosish orqali yuborish</span>
+                </div>
+                {OFFICIAL_50_FAQ_PROMPTS.map((item, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      handleSendTextPrompt(item.text);
+                      setIsQuickPromptsOpen(false);
+                    }}
+                    className="w-full text-left p-2 rounded-lg bg-zinc-950/70 hover:bg-zinc-800 border border-zinc-800/80 text-xs text-zinc-300 transition flex items-center justify-between group"
+                  >
+                    <div>
+                      <span className="text-[10px] font-mono text-zinc-500 block uppercase">
+                        {item.category}
+                      </span>
+                      <span className="text-zinc-200 line-clamp-1 group-hover:text-white">
+                        {item.text}
+                      </span>
+                    </div>
+                    <ArrowRight className="w-3.5 h-3.5 text-zinc-500 group-hover:text-zinc-200 shrink-0 ml-2" />
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Input Bar & Controls */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsQuickPromptsOpen(!isQuickPromptsOpen)}
+                className={`px-3 py-2 rounded-lg border text-xs font-medium flex items-center gap-1.5 transition shrink-0 ${
+                  isQuickPromptsOpen
+                    ? 'bg-zinc-800 border-zinc-700 text-white'
+                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
+                }`}
+                title="Rasmiy savollar ro'yxati"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">50 FAQ</span>
               </button>
-            </form>
+
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={customInputText}
+                  onChange={(e) => setCustomInputText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSendTextPrompt(customInputText);
+                  }}
+                  placeholder="Yoki savolingizni matn ko'rinishida yozing..."
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3.5 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-700 font-sans"
+                />
+                {customInputText.trim() && (
+                  <button
+                    onClick={() => handleSendTextPrompt(customInputText)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-zinc-400 hover:text-white"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Main Mic Action Button */}
+              <button
+                onClick={toggleRecording}
+                className={`p-2.5 rounded-lg border transition flex items-center justify-center shrink-0 ${
+                  mode === 'recording'
+                    ? 'bg-emerald-600 border-emerald-500 text-white animate-pulse'
+                    : 'bg-zinc-900 border-zinc-800 text-zinc-200 hover:border-zinc-700'
+                }`}
+                title={mode === 'recording' ? "To'xtatish va yuborish" : "Gapirish"}
+              >
+                {mode === 'recording' ? (
+                  <MicOff className="w-4 h-4 text-white" />
+                ) : (
+                  <Mic className="w-4 h-4 text-zinc-300" />
+                )}
+              </button>
+
+              {/* End Call Button */}
+              <button
+                onClick={handleEndCall}
+                className="px-3.5 py-2 rounded-lg bg-red-950/80 hover:bg-red-900 border border-red-800/80 text-red-200 text-xs font-semibold flex items-center gap-1.5 transition shrink-0 active:scale-95"
+                title="Qo'ng'iroqni yakunlash"
+              >
+                <PhoneOff className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Yakunlash</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* POST-CALL SUMMARY MODAL */}
+      {/* Post-Call Summary Modal */}
       {showSummaryModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-xl animate-fade-in">
-          <div className="relative w-full max-w-lg bg-slate-900 border border-slate-700 rounded-3xl p-6 sm:p-8 shadow-2xl text-white">
-            <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-500/20">
-              <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in">
+          <div className="w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl p-6 text-zinc-100 text-center">
+            <div className="w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-800 mx-auto flex items-center justify-center text-zinc-200 mb-4">
+              <ShieldCheck className="w-6 h-6 text-emerald-400" />
             </div>
 
-            <h3 className="text-xl sm:text-2xl font-extrabold text-center text-white">
-              Suhbat Yakunlandi
+            <h3 className="text-lg font-bold text-white mb-1">
+              Muloqot Muvaffaqiyatli Yakunlandi
             </h3>
-            <p className="text-xs text-slate-300 text-center mt-1">
-              Muloqot yakuni va xulosasi
+            <p className="text-xs text-zinc-400 mb-4">
+              Qo&apos;ng&apos;iroq davomiyligi: <strong className="text-zinc-200 font-mono">{formatTime(callDuration)}</strong>.
+              Suhbat rasmiy ta&apos;lim qonunchiligi arxivida saqlandi.
             </p>
 
-            {/* Summary Details Grid */}
-            <div className="mt-6 bg-slate-800/60 border border-slate-700/60 rounded-2xl p-4 space-y-3 text-xs">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-700/50">
-                <span className="text-slate-400 flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-blue-400" />
-                  Suhbat davomiyligi:
-                </span>
-                <span className="font-mono font-bold text-white">
-                  {formatTime(callDuration)}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between pb-2 border-b border-slate-700/50">
-                <span className="text-slate-400 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                  Asosiy mavzu:
-                </span>
-                <span className="font-semibold text-amber-300">
-                  {activeCall?.primary_topic || 'Umumiy Murojaat'}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between pb-2 border-b border-slate-700/50">
-                <span className="text-slate-400 flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                  Xizmat turi:
-                </span>
-                <span className="font-semibold text-emerald-300">
-                  {activeCall?.assigned_operator ? `Operator (${activeCall.assigned_operator})` : 'SözLab AI Agent'}
-                </span>
-              </div>
-
-              <div className="pt-1">
-                <span className="text-slate-400 block mb-1">Xulosa va tavsiya:</span>
-                <p className="text-[11px] text-slate-200 bg-slate-900/60 p-2.5 rounded-xl border border-slate-700/50 leading-relaxed">
-                  {activeCall?.resolution_summary || 'Murojaat bo\'yicha to\'liq ma\'lumot berildi.'}
-                </p>
-              </div>
-
-              {/* Supabase Archiving Badge */}
-              <div className="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-400/30 text-emerald-200 text-xs">
-                <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-400" />
-                <span>Muloqot protokoli arxivlandi.</span>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="mt-6 grid grid-cols-2 gap-3">
+            <div className="space-y-2">
               <button
-                onClick={handleStartCall}
-                className="py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 transition active:scale-95"
+                onClick={() => {
+                  setShowSummaryModal(false);
+                  setActiveCall(null);
+                  setMessages([]);
+                  setCallDuration(0);
+                }}
+                className="w-full py-2.5 px-4 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs transition"
               >
-                <PhoneCall className="w-4 h-4" />
-                <span>Yangi Qo&apos;ng&apos;iroq</span>
+                Yangi Qo&apos;ng&apos;iroq Boshlash
               </button>
 
               <button
-                onClick={() => router.push('/')}
-                className="py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs flex items-center justify-center gap-2 transition active:scale-95"
+                onClick={() => router.push('/history')}
+                className="w-full py-2 px-4 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 text-xs font-medium transition"
               >
-                <Home className="w-4 h-4" />
-                <span>Bosh Sahifa</span>
+                50 ta Rasmiy FAQ To&apos;plamini Ko&apos;rish
               </button>
             </div>
           </div>

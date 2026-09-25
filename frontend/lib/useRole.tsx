@@ -2,19 +2,17 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 
-export type UserRole = 'citizen' | 'operator' | 'admin';
+export type UserRole = 'citizen' | 'admin';
 
 export interface UserSession {
   role: UserRole;
-  operatorId?: string;
-  operatorName?: string;
   citizenName?: string;
   citizenPhone?: string;
 }
 
 interface RoleContextType {
   session: UserSession;
-  setRole: (role: UserRole, operatorId?: string, operatorName?: string) => void;
+  setRole: (role: UserRole) => void;
   setCitizenProfile: (name: string, phone: string) => void;
   logout: () => void;
   isReady: boolean;
@@ -79,12 +77,10 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const setRole = (role: UserRole, operatorId?: string, operatorName?: string) => {
+  const setRole = (role: UserRole) => {
     const updated: UserSession = {
       ...session,
       role,
-      operatorId: role === 'operator' ? (operatorId || 'op-1') : undefined,
-      operatorName: role === 'operator' ? (operatorName || 'Nargiza Qodirova (Operator #1)') : undefined,
     };
     saveSession(updated);
     try {

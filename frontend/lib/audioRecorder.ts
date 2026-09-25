@@ -125,6 +125,10 @@ export class AudioRecorder {
     });
   }
 
+  isRecording(): boolean {
+    return !!this.mediaRecorder && this.mediaRecorder.state === 'recording';
+  }
+
   cancel(): void {
     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
       try {

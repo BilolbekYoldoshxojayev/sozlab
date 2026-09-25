@@ -1,6 +1,6 @@
 """
-Text-to-Speech (TTS) Service with Dual-AI Fallback Engine:
-Primary: Aisha AI (Gulnoza model, WAV format)
+Text-to-Speech (TTS) Service with VoiceLab Primary Engine:
+Primary: VoiceLab Official Studio SDK (Gulnoza model, WAV format)
 Fallback: Microsoft Edge-TTS (uz-UZ-MadinaNeural / uz-UZ-SardorNeural, MP3 format)
 Resilience: In-memory Circuit Breaker (CLOSED, OPEN, HALF_OPEN) & MD5 disk cache
 """
@@ -12,15 +12,15 @@ from pathlib import Path
 from typing import Optional, Tuple
 import edge_tts
 from app.core.config import settings
-from app.services.aisha_service import aisha_service, AishaAPIException
+from app.services.voicelab_service import voicelab_service, VoiceLabAPIException
 
 logger = logging.getLogger(__name__)
 
 
 class CircuitBreakerState:
-    CLOSED = "CLOSED"       # Normal: All traffic routes to Aisha AI
-    OPEN = "OPEN"           # Failing: Traffic bypasses Aisha AI, routes directly to Edge-TTS
-    HALF_OPEN = "HALF_OPEN" # Cooldown passed: One trial probe allowed to test Aisha AI
+    CLOSED = "CLOSED"       # Normal: All traffic routes to VoiceLab
+    OPEN = "OPEN"           # Failing: Traffic bypasses VoiceLab, routes directly to Edge-TTS
+    HALF_OPEN = "HALF_OPEN" # Cooldown passed: One trial probe allowed to test VoiceLab
 
 
 class CircuitBreaker:
@@ -39,7 +39,7 @@ class CircuitBreaker:
         if self.state == CircuitBreakerState.OPEN:
             if time.time() - self.last_failure_time >= self.cooldown_seconds:
                 self.state = CircuitBreakerState.HALF_OPEN
-                logger.info("[Circuit Breaker] Cooldown elapsed. Transitioned to HALF_OPEN (probing Aisha AI).")
+                logger.info("[Circuit Breaker] Cooldown elapsed. Transitioned to HALF_OPEN (probing VoiceLab).")
                 return True
             return False
         # HALF_OPEN allows probe
@@ -72,7 +72,7 @@ class CircuitBreaker:
 
 
 class TTSService:
-    """Dual-AI TTS Service with disk-based MD5 caching and circuit breaker."""
+    """Dual-Engine TTS Service with disk-based MD5 caching and circuit breaker."""
 
     def __init__(self):
         self.cache_dir: Path = settings.AUDIO_CACHE_DIR
@@ -93,7 +93,7 @@ class TTSService:
     ) -> str:
         key = f"{provider}_{voice_or_model}_{text}_{rate_or_speed}_{pitch}"
         file_hash = hashlib.md5(key.encode("utf-8")).hexdigest()
-        ext = "wav" if provider == "aisha" else "mp3"
+        ext = "wav" if provider in ("voicelab", "aisha") else "mp3"
         return f"{file_hash}.{ext}"
 
     def _get_legacy_edge_filename(self, text: str, voice: str, rate: str, pitch: str) -> str:
@@ -107,10 +107,10 @@ class TTSService:
         voice: Optional[str] = None,
         rate: str = "+0%",
         pitch: str = "+0Hz",
-        prefer_aisha: bool = True,
+        prefer_voicelab: bool = True,
     ) -> Tuple[str, float, bool]:
         """
-        Prioritizes Aisha AI Gulnoza TTS, with seamless fallback to Edge-TTS (uz-UZ-MadinaNeural).
+        Prioritizes VoiceLab Gulnoza TTS, with seamless fallback to Edge-TTS (uz-UZ-MadinaNeural).
         Returns: (audio_url_path, duration_estimate_seconds, was_cached)
         """
         clean_text = text.strip() if text else ""
@@ -121,10 +121,10 @@ class TTSService:
         duration_estimate = max(1.0, round(len(clean_text) / 14.0, 2))
 
         # Target identifiers
-        aisha_model = settings.AISHA_TTS_MODEL
-        aisha_speed = str(settings.AISHA_TTS_SPEED)
-        aisha_filename = self._get_cache_filename(clean_text, "aisha", aisha_model, aisha_speed, pitch="+0Hz")
-        aisha_filepath = self.cache_dir / aisha_filename
+        vl_voice_id = settings.VOICELAB_VOICE_ID
+        vl_speed = str(settings.VOICELAB_SPEED)
+        vl_filename = self._get_cache_filename(clean_text, "voicelab", vl_voice_id, vl_speed, pitch="+0Hz")
+        vl_filepath = self.cache_dir / vl_filename
 
         selected_edge_voice = voice or self.default_edge_voice
         if selected_edge_voice not in ["uz-UZ-MadinaNeural", "uz-UZ-SardorNeural"]:
@@ -136,37 +136,37 @@ class TTSService:
         legacy_edge_filepath = self.cache_dir / legacy_edge_filename
 
         # 1. Check disk cache
-        if prefer_aisha and aisha_filepath.exists() and aisha_filepath.stat().st_size > 100:
-            return f"/api/audio/{aisha_filename}", duration_estimate, True
+        if prefer_voicelab and vl_filepath.exists() and vl_filepath.stat().st_size > 100:
+            return f"/api/audio/{vl_filename}", duration_estimate, True
 
         if edge_filepath.exists() and edge_filepath.stat().st_size > 100:
-            if not prefer_aisha or not self.breaker.can_attempt() or self.breaker.failure_count > 0:
+            if not prefer_voicelab or not self.breaker.can_attempt() or self.breaker.failure_count > 0:
                 return f"/api/audio/{edge_filename}", duration_estimate, True
 
         if legacy_edge_filepath.exists() and legacy_edge_filepath.stat().st_size > 100:
-            if not prefer_aisha or not self.breaker.can_attempt() or self.breaker.failure_count > 0:
+            if not prefer_voicelab or not self.breaker.can_attempt() or self.breaker.failure_count > 0:
                 return f"/api/audio/{legacy_edge_filename}", duration_estimate, True
 
-        # 2. Primary: Aisha AI (Gulnoza)
-        if prefer_aisha and self.breaker.can_attempt():
+        # 2. Primary: VoiceLab (Gulnoza model)
+        if prefer_voicelab and self.breaker.can_attempt():
             try:
-                audio_bytes = await aisha_service.tts_synthesize(
-                    transcript=clean_text,
-                    model=aisha_model,
-                    speed=settings.AISHA_TTS_SPEED,
+                audio_bytes = await voicelab_service.tts_synthesize(
+                    text=clean_text,
+                    voice_id=vl_voice_id,
+                    speed=settings.VOICELAB_SPEED,
                 )
                 if audio_bytes and len(audio_bytes) > 100:
-                    tmp_path = self.cache_dir / f"tmp_{aisha_filename}"
+                    tmp_path = self.cache_dir / f"tmp_{vl_filename}"
                     tmp_path.write_bytes(audio_bytes)
-                    tmp_path.replace(aisha_filepath)
+                    tmp_path.replace(vl_filepath)
                     self.breaker.record_success()
-                    return f"/api/audio/{aisha_filename}", duration_estimate, False
+                    return f"/api/audio/{vl_filename}", duration_estimate, False
                 else:
-                    raise AishaAPIException("Empty audio returned by Aisha AI", status_code=502)
+                    raise VoiceLabAPIException("Empty audio returned by VoiceLab", status_code=502)
             except Exception as e:
                 self.breaker.record_failure()
                 logger.warning(
-                    f"[Dual-AI TTS Fallback] Aisha AI TTS unavailable ({e}). "
+                    f"[VoiceLab TTS Fallback] VoiceLab unavailable ({e}). "
                     f"Breaker: {self.breaker.state} (failures={self.breaker.failure_count}). "
                     f"Falling back to Edge-TTS ({selected_edge_voice})."
                 )
@@ -188,7 +188,7 @@ class TTSService:
                 tmp_path.replace(edge_filepath)
             return f"/api/audio/{edge_filename}", duration_estimate, False
         except Exception as e:
-            logger.error(f"[TTS Critical Error] Both Aisha AI and Edge-TTS failed: {e}")
+            logger.error(f"[TTS Critical Error] Both VoiceLab and Edge-TTS failed: {e}")
             if edge_filepath.exists():
                 return f"/api/audio/{edge_filename}", duration_estimate, True
             if legacy_edge_filepath.exists():

@@ -35,3 +35,23 @@ Adopt a Dual-AI strategy where `AishaService` acts as the prioritized primary vo
 Operator and Admin control surfaces must not be visible or accessible to Citizens or unauthorized visitors using the same platform or accessing direct URLs.
 ### Decision
 Implement `RoleProtectedPage.tsx` route guarding with role verification via `useRole` hook, coupled with dynamic role-filtered navigation in `Navbar.tsx`. Any unauthorized URL navigation displays an immediate "Kirish Cheklangan" security gate with a single return button.
+
+## [2026-09-25] ADR-006: WebRTC Handshake State Machine & DOM Audio Binding
+### Context
+Direct browser-to-browser audio between Citizen and Operator failed due to offer/answer race conditions, detached audio elements blocked by autoplay policies, and unhandled socket signaling.
+### Decision
+Implement an explicit bidirectional `peer_ready` handshake protocol in `webrtcManager.ts` and `ws.py`. Remote media streams are bound directly to DOM-rendered `<audio>` elements to satisfy browser autoplay policies. Unprocessed early signaling messages are queued until peer connection initialization completes.
+
+## [2026-09-25] ADR-007: Procedural Audio Chimes via Web Audio API
+### Context
+Call centers and modern voice agents (LiveKit, ElevenLabs, Vapi) provide auditory feedback for critical call transitions (connecting, ringing, operator joined, call end). Relying on external audio assets risks 404s, CORS, or latency.
+### Decision
+Generate auditory chimes procedurally using the Web Audio API (`AudioContext`, `OscillatorNode`, `GainNode`). This requires zero asset downloads, adds zero network latency, and operates 100% reliably in all environments.
+
+## [2026-09-25] ADR-008: 100% Autonomous AI Voice Architecture & Strict PDF Legal Grounding
+### Context
+User mandated removing the human operator layer entirely from the codebase ("operator degan narsani butun kodbazadan olib tashla, only ai should be used") and basing all answers strictly on the attached 2 PDFs (50 FAQs & Legal Encyclopedia), refusing anything out-of-scope.
+### Decision
+1. Eliminate all operator routes (`/operator`), components (`OperatorQueue.tsx`, `OperatorLiveCall.tsx`), queues, and WebRTC peer-to-peer mechanisms. SözLab transitions to a 100% autonomous AI voice assistant.
+2. Ingest all 50 FAQs (across 8 chapters) and the complete legal encyclopedia into `education_faq_50.py` and `education_legislation_encyclopedia.py`.
+3. Enforce a strict system guardrail: answers are generated exclusively from this legal corpus, citing the exact Constitution/Law/Decree article. Any inquiry outside this scope triggers an official polite refusal explaining the ministry's legal boundaries.

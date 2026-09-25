@@ -223,90 +223,30 @@ def test_farewell_via_audio_turn_simulated():
 
 
 # ============================================================================
-# VECTOR 4: OPERATOR FLEET ZERO-MOCK & LIFECYCLE
+# VECTOR 4: AUTONOMOUS AI CALL LIFECYCLE & RESOLUTION
 # ============================================================================
 
-def test_operator_fleet_fresh_startup_zero_mock():
-    """Assert that a fresh CallManager instance has exactly 0 mock operators."""
-    fresh_mgr = CallManager()
-    # Mock data seeding must NOT add hardcoded mock operators
-    ops = fresh_mgr.get_all_operators()
-    assert len(ops) == 0, f"Expected 0 mock operators on fresh startup, found {len(ops)}: {[o.name for o in ops]}"
+def test_autonomous_ai_call_lifecycle_and_zero_operators():
+    """Assert pure AI call lifecycle without operator dependency."""
+    c = call_manager.create_call("Autonomous AI Citizen")
+    assert c.status in (CallStatus.INITIATED, CallStatus.AI_HANDLING)
+    assert c.assigned_operator is None
 
-def test_operator_dynamic_registration_and_offline():
-    """
-    Assert dynamic operator registration and offline state transition:
-    1. Register operator via API
-    2. Verify status AVAILABLE
-    3. Disconnect via set_operator_offline
-    4. Verify status OFFLINE
-    """
-    op_id = "op-adv-test-1"
-    op_name = "Nodira Zokirova"
-
-    # Register via REST
-    reg_res = client.post("/api/calls/operators/register", json={
-        "operator_id": op_id,
-        "name": op_name
+    # Complete call via AI farewell turn
+    res = client.post(f"/api/calls/{c.id}/turn", json={
+        "call_id": c.id,
+        "user_text": "Katta rahmat, barchasi tushunarli bo'ldi, xayr!",
+        "voice_enabled": False
     })
-    assert reg_res.status_code == 200
-    reg_data = reg_res.json()
-    assert reg_data["id"] == op_id
-    assert reg_data["name"] == op_name
-    assert reg_data["status"] == "available"
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "completed"
+    assert data["intent"] == "Xayrlashuv"
 
-    # Verify present in all operators
-    all_ops = client.get("/api/calls/operators").json()
-    found = [o for o in all_ops if o["id"] == op_id]
-    assert len(found) == 1
-    assert found[0]["status"] == "available"
-
-    # Transition to OFFLINE
-    offline_op = call_manager.set_operator_offline(op_id)
-    assert offline_op is not None
-    assert offline_op.status == OperatorStatus.OFFLINE
-
-    all_ops_after = client.get("/api/calls/operators").json()
-    found_after = [o for o in all_ops_after if o["id"] == op_id]
-    assert found_after[0]["status"] == "offline"
-
-def test_operator_mid_call_disconnect_resilience():
-    """
-    Adversarial test: Operator drops WebSocket / disconnects while actively handling a citizen call.
-    System must:
-    1. Mark operator OFFLINE.
-    2. Re-insert the call at index 0 of _waiting_queue (priority 1).
-    3. Change call status to WAITING_OPERATOR.
-    4. Append a system message explaining the disconnect to the caller.
-    """
-    op_id = "op-drop-midcall"
-    op = call_manager.register_operator(op_id, "Mid-call Operator")
-    op.status = OperatorStatus.AVAILABLE
-
-    # Citizen call
-    c = call_manager.create_call("Stranded Citizen")
-    call_manager.transfer_to_operator(c.id)
-
-    # Verify call is now being handled by this operator
-    updated_c = call_manager.get_call(c.id)
-    assert updated_c.status == CallStatus.OPERATOR_HANDLING
-    assert op.current_call_id == c.id
-
-    # Operator drops!
-    call_manager.set_operator_offline(op_id)
-
-    # Assertions
-    assert op.status == OperatorStatus.OFFLINE
-    assert op.current_call_id is None
-
-    recovered_call = call_manager.get_call(c.id)
-    assert recovered_call.status == CallStatus.WAITING_OPERATOR
-    assert recovered_call.assigned_operator is None
-    assert call_manager._waiting_queue[0] == c.id
-    
-    last_msg = recovered_call.messages[-1]
-    assert last_msg.role == SpeakerRole.SYSTEM
-    assert "uzildi" in last_msg.text.lower() or "qaytarildingiz" in last_msg.text.lower()
+    persisted = call_manager.get_call(c.id)
+    assert persisted.status == CallStatus.COMPLETED
+    assert persisted.ended_at is not None
+    assert persisted.resolution_summary is not None
 
 
 # ============================================================================
@@ -317,11 +257,10 @@ def test_admin_ghost_mode_complete_invisibility():
     """
     Adversarial Test:
     - Citizen connects to /ws/call/{call_id}
-    - Operator connects to /ws/operator
     - Admin connects to /ws/admin and subscribes with silent_listen
     - Send speech / turn
     - Admin receives ghost audio turns and text
-    - STRICT ASSERTION: Citizen and Operator receive ZERO admin events!
+    - STRICT ASSERTION: Citizen receives ZERO admin events!
     """
     c = call_manager.create_call("Ghost Invisibility Citizen")
     call_id = c.id
@@ -330,153 +269,70 @@ def test_admin_ghost_mode_complete_invisibility():
         cit_init = citizen_ws.receive_json()
         assert cit_init["type"] == "call_connected"
 
-        with client.websocket_connect("/ws/operator") as operator_ws:
-            op_init = operator_ws.receive_json()
-            assert op_init["type"] == "initial_state"
+        with client.websocket_connect("/ws/admin") as admin_ws:
+            admin_init = admin_ws.receive_json()
+            assert admin_init["type"] == "admin_initial_state"
 
-            with client.websocket_connect("/ws/admin") as admin_ws:
-                admin_init = admin_ws.receive_json()
-                assert admin_init["type"] == "admin_initial_state"
+            # 1. Admin activates silent_listen
+            admin_ws.send_json({"action": "silent_listen", "call_id": call_id})
+            sub_res = admin_ws.receive_json()
+            assert sub_res["type"] == "subscribed"
+            assert sub_res["call_id"] == call_id
 
-                # 1. Admin activates silent_listen
-                admin_ws.send_json({"action": "silent_listen", "call_id": call_id})
-                sub_res = admin_ws.receive_json()
-                assert sub_res["type"] == "subscribed"
-                assert sub_res["call_id"] == call_id
+            # CITIZEN must NOT receive any message about admin listening!
+            # We perform an audio turn on the call
+            dummy_wav = b"RIFF" + b"\x00" * 400
+            files = {"audio": ("sample.wav", io.BytesIO(dummy_wav), "audio/wav")}
+            res = client.post(f"/api/calls/{call_id}/audio-turn", files=files, data={"voice_name": "Gulnoza"})
+            assert res.status_code == 200
 
-                # CITIZEN and OPERATOR must NOT receive any message about admin listening!
-                # We perform an audio turn on the call
-                dummy_wav = b"RIFF" + b"\x00" * 400
-                files = {"audio": ("sample.wav", io.BytesIO(dummy_wav), "audio/wav")}
-                res = client.post(f"/api/calls/{call_id}/audio-turn", files=files, data={"voice_name": "uz-UZ-MadinaNeural"})
-                assert res.status_code == 200
+            # 2. Check Admin receives ghost messages
+            ghost_cit = admin_ws.receive_json()
+            assert ghost_cit["type"] == "ghost_message"
+            assert ghost_cit["call_id"] == call_id
+            assert ghost_cit["role"] == "citizen"
 
-                # 2. Check Admin receives ghost messages
-                ghost_cit = admin_ws.receive_json()
-                assert ghost_cit["type"] == "ghost_message"
-                assert ghost_cit["call_id"] == call_id
-                assert ghost_cit["role"] == "citizen"
+            ghost_bot = admin_ws.receive_json()
+            assert ghost_bot["type"] == "ghost_message"
+            assert ghost_bot["call_id"] == call_id
+            assert ghost_bot["role"] == "bot"
+            assert "audio_url" in ghost_bot
 
-                ghost_bot = admin_ws.receive_json()
-                assert ghost_bot["type"] == "ghost_message"
-                assert ghost_bot["call_id"] == call_id
-                assert ghost_bot["role"] == "bot"
-                assert "audio_url" in ghost_bot
+            # 3. Check Citizen received normal call messages (transcription, new_message, ai_response)
+            cit_msg1 = citizen_ws.receive_json()
+            assert cit_msg1["type"] in ("transcription", "new_message", "ai_response")
+            cit_msg2 = citizen_ws.receive_json()
+            assert cit_msg2["type"] in ("transcription", "new_message", "ai_response")
+            cit_msg3 = citizen_ws.receive_json()
+            assert cit_msg3["type"] in ("transcription", "new_message", "ai_response")
 
-                # 3. Check Citizen received normal call messages (transcription, new_message, ai_response)
-                cit_msg1 = citizen_ws.receive_json()
-                assert cit_msg1["type"] in ("transcription", "new_message", "ai_response")
-                cit_msg2 = citizen_ws.receive_json()
-                assert cit_msg2["type"] in ("transcription", "new_message", "ai_response")
-                cit_msg3 = citizen_ws.receive_json()
-                assert cit_msg3["type"] in ("transcription", "new_message", "ai_response")
+            # Verify NO admin ghost message leaked to citizen!
+            for m in [cit_msg1, cit_msg2, cit_msg3]:
+                assert m["type"] != "ghost_message"
+                assert m["type"] != "subscribed"
+                assert "admin" not in m.get("type", "").lower()
 
-                # Verify NO admin ghost message leaked to citizen!
-                for m in [cit_msg1, cit_msg2, cit_msg3]:
-                    assert m["type"] != "ghost_message"
-                    assert m["type"] != "subscribed"
-                    assert "admin" not in m.get("type", "").lower()
-
-                # 4. Admin unlistens
-                admin_ws.send_json({"action": "unlisten", "call_id": call_id})
-                unsub = admin_ws.receive_json()
-                assert unsub["type"] == "unsubscribed"
+            # 4. Admin unlistens
+            admin_ws.send_json({"action": "unlisten", "call_id": call_id})
+            unsub = admin_ws.receive_json()
+            assert unsub["type"] == "unsubscribed"
 
 
 # ============================================================================
-# VECTOR 6: 3-SECOND COUNTDOWN EVENT ON CALL COMPLETION WITH QUEUE
+# VECTOR 6: KNOWLEDGE GROUNDING & LEGAL REASONING
 # ============================================================================
 
-def test_operator_countdown_event_with_queue():
-    """
-    Assert 3-second auto-connect countdown event:
-    1. Operator handles active call
-    2. Another call is waiting in queue
-    3. Operator completes active call
-    4. Operator WS receives 'next_call_countdown' with duration=3 and valid payload
-    5. Waiting citizen receives 'operator_assigned'
-    """
-    call_manager._waiting_queue.clear()
-    op_id = "op-countdown-adv"
-    op_name = "Countdown Adv Operator"
-    call_manager.register_operator(op_id, op_name)
+def test_legal_knowledge_grounding_in_dialog():
+    """Assert dialog returns verified legal references for in-scope higher education questions."""
+    c = call_manager.create_call("Legal Inquiry Citizen")
+    res = client.post(f"/api/calls/{c.id}/turn", json={
+        "call_id": c.id,
+        "user_text": "Magistraturaga kirishda chet tili sertifikati talab qilinadimi?",
+        "voice_enabled": False
+    })
+    assert res.status_code == 200
+    data = res.json()
+    assert len(data["knowledge_references"]) > 0
+    ref_strs = [str(r).lower() for r in data["knowledge_references"]]
+    assert any("magistratura" in t or "til" in t or "sertifikat" in t or "vmq" in t or "qaror" in t for t in ref_strs)
 
-    # Put all other operators in BUSY
-    for o in call_manager._operators.values():
-        o.status = OperatorStatus.BUSY
-
-    # Call 1 (active)
-    c1 = call_manager.create_call("Active Call 1")
-    c1.status = CallStatus.OPERATOR_HANDLING
-    c1.assigned_operator = op_name
-    call_manager._operators[op_id].current_call_id = c1.id
-
-    # Call 2 (in queue)
-    c2 = call_manager.create_call("Waiting Citizen 2")
-    _, _, qpos = call_manager.transfer_to_operator(c2.id)
-    assert qpos == 1
-    assert c2.id in call_manager._waiting_queue
-
-    with client.websocket_connect(f"/ws/call/{c2.id}") as citizen2_ws:
-        _ = citizen2_ws.receive_json() # call_connected
-
-        with client.websocket_connect(f"/ws/operator?operator_id={op_id}&operator_name={op_name}") as op_ws:
-            init_msg = op_ws.receive_json() # initial_state
-            assert init_msg["type"] == "initial_state"
-            # Handshake registers operator and broadcasts operators_updated
-            handshake_update = op_ws.receive_json()
-            assert handshake_update["type"] == "operators_updated"
-
-            # Operator completes call 1
-            op_ws.send_json({
-                "action": "complete",
-                "call_id": c1.id,
-                "operator_id": op_id,
-                "operator_name": op_name,
-                "summary": "Savolga to'liq javob berildi."
-            })
-
-            # Check Operator receives countdown
-            countdown_event = op_ws.receive_json()
-            assert countdown_event["type"] == "next_call_countdown", f"Expected next_call_countdown, got {countdown_event}"
-            assert countdown_event["duration"] == 3
-            assert countdown_event["next_call_id"] == c2.id
-            assert countdown_event["caller_name"] == "Waiting Citizen 2"
-            assert "next_call" in countdown_event
-
-            # Check Waiting Citizen receives operator assignment
-            cit2_event = citizen2_ws.receive_json()
-            assert cit2_event["type"] == "operator_assigned"
-            assert op_name in cit2_event.get("operator_name", "")
-
-def test_operator_no_countdown_when_queue_empty():
-    """Assert that when queue is empty, operator completion does NOT emit next_call_countdown."""
-    call_manager._waiting_queue.clear()
-    op_id = "op-no-queue"
-    op_name = "Solo Operator"
-    call_manager.register_operator(op_id, op_name)
-
-    c = call_manager.create_call("Lone Call")
-    c.status = CallStatus.OPERATOR_HANDLING
-    c.assigned_operator = op_name
-    call_manager._operators[op_id].current_call_id = c.id
-
-    with client.websocket_connect(f"/ws/operator?operator_id={op_id}&operator_name={op_name}") as op_ws:
-        init_msg = op_ws.receive_json() # initial_state
-        assert init_msg["type"] == "initial_state"
-        handshake_update = op_ws.receive_json()
-        assert handshake_update["type"] == "operators_updated"
-
-        op_ws.send_json({
-            "action": "complete",
-            "call_id": c.id,
-            "operator_id": op_id,
-            "operator_name": op_name,
-            "summary": "Muammo hal etildi."
-        })
-
-        # Since queue is empty, no countdown event should be received
-        # Next event should be call_completed broadcast
-        event = op_ws.receive_json()
-        assert event["type"] == "call_completed"
-        assert event["type"] != "next_call_countdown"

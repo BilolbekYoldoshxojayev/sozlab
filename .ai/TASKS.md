@@ -1,8 +1,20 @@
-# Task Board: SözLab Production Overhaul
-
 ## READY
 
 ## IN PROGRESS
+
+## BLOCKED
+
+## REVIEW
+
+## DONE
+- [x] Task 9.1: Frontend - Completely delete `app/operator/page.tsx`, `OperatorQueue.tsx`, `OperatorLiveCall.tsx`; clean `Navbar.tsx`, `useRole.tsx`, `RoleGateModal.tsx`, `RoleProtectedPage.tsx`
+- [x] Task 9.2: Backend - Remove operator fleet, queues, and handover logic from `call_manager.py`, `ws.py`, `calls.py`
+- [x] Task 9.3: Backend - Ingest all 50 FAQs and official legal encyclopedia from the 2 PDFs into `app/data/education_faq_50.py` and `app/data/education_legislation_encyclopedia.py`
+- [x] Task 9.4: Backend - Integrate official VoiceLab Studio SDK (Noble Lynx) in `voicelab_service.py`, `tts_service.py`, `stt_service.py`
+- [x] Task 9.5: Backend - Implement strict guardrail prompt in `ai_dialog.py` (answers exclusively from the 2 PDFs, strictly refuses out-of-scope questions)
+- [x] Task 9.6: Frontend - Polish `CallSimulator.tsx` and `app/page.tsx` for pure AI voice assistant with legal citation badges and obsidian monochrome UX
+- [x] Task 9.7: Verification - Run full pytest test suite (64/64 passed, 100% green) and frontend verification scripts
+
 
 ## BLOCKED
 

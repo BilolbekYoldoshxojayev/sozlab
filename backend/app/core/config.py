@@ -22,9 +22,15 @@ class Settings:
     DEFAULT_TTS_VOICE: str = os.getenv("DEFAULT_TTS_VOICE", "uz-UZ-MadinaNeural")
     AUDIO_CACHE_DIR: Path = Path(os.getenv("AUDIO_CACHE_DIR", "./cache/audio")).resolve()
     
-    # Aisha AI Speech Integration
+    # VoiceLab Official SDK Integration (Noble Lynx)
+    VOICELAB_API_KEY: str = os.getenv("VOICELAB_API_KEY", "vlk_CeGs3QOAsd1RPQOVKCVjKac5tCNNlzk5O97xJRQ8Awg")
+    VOICELAB_VOICE_ID: str = os.getenv("VOICELAB_VOICE_ID", "voice_01J9NEUTRAL0000000000000001")
+    VOICELAB_SPEED: float = float(os.getenv("VOICELAB_SPEED", "1.0"))
+    VOICELAB_TIMEOUT_SECONDS: float = float(os.getenv("VOICELAB_TIMEOUT_SECONDS", "15.0"))
+
+    # Aisha AI Speech Integration (Secondary Fallback)
     AISHA_BASE_URL: str = os.getenv("AISHA_BASE_URL", "https://back.aisha.group")
-    AISHA_API_KEY: str = os.getenv("AISHA_API_KEY", "vlk_Iyeis6LM8pFCI0aMVTbeXUeJqpL_3GMhgAXmMLMAwpI")
+    AISHA_API_KEY: str = os.getenv("AISHA_API_KEY", "vlk_CeGs3QOAsd1RPQOVKCVjKac5tCNNlzk5O97xJRQ8Awg")
     AISHA_TTS_MODEL: str = os.getenv("AISHA_TTS_MODEL", "Gulnoza")
     AISHA_TTS_MOOD: str = os.getenv("AISHA_TTS_MOOD", "Neutral")
     AISHA_TTS_SPEED: float = float(os.getenv("AISHA_TTS_SPEED", "1.0"))

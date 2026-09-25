@@ -1,9 +1,15 @@
+"""
+SözLab Autonomous AI Calls API Router
+Handles AI voice calls, turns, audio synthesis, and admin ghost listeners.
+Zero operator queues or handovers.
+"""
+
 import uuid
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query, Body, UploadFile, File, Form
 from app.models.schemas import (
     CallRecord, DialogTurnRequest, DialogTurnResponse, AudioTurnResponse,
-    MessageSchema, SpeakerRole, CallStatus, OperatorRecord, OperatorStatus
+    MessageSchema, SpeakerRole, CallStatus
 )
 from app.services.call_manager import call_manager
 from app.services.ai_dialog import dialog_manager
@@ -11,21 +17,6 @@ from app.services.tts_service import tts_service
 from app.api.routes.ws import ws_manager
 
 router = APIRouter(prefix="/calls", tags=["Calls"])
-
-# --- Operator Registry Endpoints ---
-
-@router.get("/operators", response_model=List[OperatorRecord])
-def get_operators():
-    return call_manager.get_all_operators()
-
-@router.post("/operators/register", response_model=OperatorRecord)
-def register_operator(
-    operator_id: str = Body(..., embed=True),
-    name: str = Body(..., embed=True)
-):
-    return call_manager.register_operator(operator_id=operator_id, name=name)
-
-# --- Calls Endpoints ---
 
 @router.get("", response_model=List[CallRecord])
 def get_calls(
@@ -75,16 +66,16 @@ async def process_call_turn(call_id: str, request: DialogTurnRequest):
     )
     call_manager.add_message(call_id, user_msg)
 
-    # Process AI turn
+    # Process AI turn strictly grounded in legal context
     dialog_res = await dialog_manager.process_user_turn(call_id, request.user_text)
 
-    # Optional speech synthesis
+    # Voice synthesis via VoiceLab Gulnoza
     audio_url = None
     if request.voice_enabled:
         try:
             url, _, _ = await tts_service.generate_speech(
                 dialog_res.ai_text,
-                voice=request.voice_name or "uz-UZ-MadinaNeural"
+                voice=request.voice_name
             )
             audio_url = url
             dialog_res.audio_url = url
@@ -103,20 +94,15 @@ async def process_call_turn(call_id: str, request: DialogTurnRequest):
     )
     call_manager.add_message(call_id, ai_msg)
 
-    # Smart Routing or Farewell
+    # Check farewell
     if dialog_res.intent == "Xayrlashuv" or dialog_manager.is_farewell(request.user_text):
         call_manager.complete_call(call_id, summary="Fuqaro minnatdorchilik bildirib suhbatni yakunladi.")
         dialog_res.status = "completed"
-    elif dialog_res.requires_operator:
-        updated_call, assigned_op, queue_pos = call_manager.transfer_to_operator(call_id, reason="AI yo'naltirdi")
-        dialog_res.queue_position = queue_pos if queue_pos > 0 else None
-        dialog_res.assigned_operator = assigned_op.name if assigned_op else None
-        dialog_res.status = updated_call.status.value if updated_call else "waiting_operator"
     else:
         current_call = call_manager.get_call(call_id)
         dialog_res.status = current_call.status.value if current_call else call.status.value
 
-    # Bridge REST turn to WebSockets & Admin Ghost Listeners
+    # Bridge to WebSocket subscribers and Admin Listeners
     citizen_ts = user_msg.timestamp.isoformat() if hasattr(user_msg.timestamp, "isoformat") else str(user_msg.timestamp)
     bot_ts = ai_msg.timestamp.isoformat() if hasattr(ai_msg.timestamp, "isoformat") else str(ai_msg.timestamp)
 
@@ -147,13 +133,6 @@ async def process_call_turn(call_id: str, request: DialogTurnRequest):
         "timestamp": bot_ts
     })
 
-    current_call = call_manager.get_call(call_id)
-    if current_call and (current_call.assigned_operator or current_call.status == CallStatus.OPERATOR_HANDLING):
-        await ws_manager.broadcast_to_operators({
-            "type": "call_updated",
-            "call": current_call.model_dump(mode="json")
-        })
-
     return dialog_res
 
 @router.post("/{call_id}/audio-turn", response_model=AudioTurnResponse)
@@ -166,8 +145,8 @@ async def process_call_audio_turn(
     voice_enabled: Optional[str] = Form("true")
 ):
     """
-    Accepts real audio recording from browser (MediaRecorder) or test clients, transcribes via Gemini STT / fallback,
-    generates response and synthesized audio.
+    Accepts real audio recording from browser, transcribes via VoiceLab Studio SDK,
+    generates strictly grounded legal response and VoiceLab synthesized audio.
     """
     call = call_manager.get_call(call_id)
     if not call:
@@ -177,18 +156,18 @@ async def process_call_audio_turn(
     if not upload_file:
         raise HTTPException(status_code=400, detail="Audio fayl yuborilmadi")
 
-    selected_voice = voice_name or voice or "uz-UZ-MadinaNeural"
+    selected_voice = voice_name or voice
     is_voice_enabled = str(voice_enabled).lower() not in ("false", "0", "no", "none")
 
     audio_bytes = await upload_file.read()
-    mime_type = upload_file.content_type or "audio/webm"
+    mime_type = upload_file.content_type or "audio/wav"
 
-    # Multimodal speech recognition + response
+    # Transcribe via VoiceLab & evaluate through dialog manager
     transcribed_text, dialog_res = await dialog_manager.process_audio_turn(
         call_id=call_id,
         audio_bytes=audio_bytes,
         mime_type=mime_type,
-        voice_name=selected_voice
+        voice_name=selected_voice or "Gulnoza"
     )
 
     # Record citizen message with transcribed text
@@ -200,7 +179,7 @@ async def process_call_audio_turn(
     )
     call_manager.add_message(call_id, user_msg)
 
-    # Synthesize AI speech if enabled
+    # Synthesize AI speech with VoiceLab
     audio_url = None
     if is_voice_enabled:
         try:
@@ -221,27 +200,18 @@ async def process_call_audio_turn(
     )
     call_manager.add_message(call_id, ai_msg)
 
-    # Check farewell or operator transfer
-    queue_pos = None
-    assigned_op_name = None
-
+    # Check farewell
     if dialog_res.intent == "Xayrlashuv" or call.status == CallStatus.COMPLETED or dialog_manager.is_farewell(transcribed_text):
         call_manager.complete_call(call_id, summary="Fuqaro minnatdorchilik bildirib suhbatni yakunladi.")
         current_status = "completed"
-    elif dialog_res.requires_operator:
-        updated_call, assigned_op, pos = call_manager.transfer_to_operator(call_id, reason="AI yo'naltirdi")
-        queue_pos = pos if pos > 0 else None
-        assigned_op_name = assigned_op.name if assigned_op else None
-        current_status = updated_call.status.value if updated_call else "waiting_operator"
     else:
         current_call = call_manager.get_call(call_id)
         current_status = current_call.status.value if current_call else call.status.value
 
-    # Bridge REST audio turns to WebSockets:
+    # Bridge to WebSockets & Admin Ghost Listeners
     citizen_ts = user_msg.timestamp.isoformat() if hasattr(user_msg.timestamp, "isoformat") else str(user_msg.timestamp)
     bot_ts = ai_msg.timestamp.isoformat() if hasattr(ai_msg.timestamp, "isoformat") else str(ai_msg.timestamp)
 
-    # 1. Citizen transcription & message to call WebSockets
     await ws_manager.broadcast_to_call(call_id, {
         "type": "transcription",
         "call_id": call_id,
@@ -260,7 +230,7 @@ async def process_call_audio_turn(
         "audio_url": audio_url
     })
 
-    # 2. Ghost mode for admin listeners (100% silent and invisible)
+    # Admin ghost listener mirroring
     await ws_manager.broadcast_to_admin_listeners(call_id, {
         "type": "ghost_message",
         "call_id": call_id,
@@ -277,14 +247,6 @@ async def process_call_audio_turn(
         "timestamp": bot_ts
     })
 
-    # 3. If call is assigned to an operator, also forward to operator socket
-    latest_call = call_manager.get_call(call_id)
-    if latest_call and (latest_call.assigned_operator or latest_call.status == CallStatus.OPERATOR_HANDLING):
-        await ws_manager.broadcast_to_operators({
-            "type": "call_updated",
-            "call": latest_call.model_dump(mode="json")
-        })
-
     return AudioTurnResponse(
         call_id=call_id,
         transcribed_text=transcribed_text,
@@ -292,103 +254,19 @@ async def process_call_audio_turn(
         user_text=transcribed_text,
         bot_text=dialog_res.ai_text,
         status=current_status,
-        operator_name=assigned_op_name,
         audio_url=audio_url,
         sentiment=dialog_res.sentiment,
         intent=dialog_res.intent,
         topic=dialog_res.topic,
-        requires_operator=dialog_res.requires_operator,
-        queue_position=queue_pos,
-        assigned_operator=assigned_op_name
+        requires_operator=False
     )
-
-@router.post("/{call_id}/transfer")
-async def transfer_call(call_id: str, reason: str = Body("Fuqaro operatorni so'radi", embed=True)):
-    call, assigned_op, queue_pos = call_manager.transfer_to_operator(call_id, reason=reason)
-    if not call:
-        raise HTTPException(status_code=404, detail="Qo'ng'iroq topilmadi")
-    if assigned_op:
-        await ws_manager.broadcast_to_call(call_id, {
-            "type": "operator_assigned",
-            "call_id": call_id,
-            "operator_name": assigned_op.name,
-            "message": f"Siz navbatchi operator {assigned_op.name}ga ulandingiz."
-        })
-    else:
-        await ws_manager.broadcast_to_call(call_id, {
-            "type": "queue_update",
-            "call_id": call_id,
-            "position": queue_pos,
-            "message": f"Barcha operatorlar band. Siz navbatda {queue_pos}-o'rindasiz."
-        })
-    await ws_manager.broadcast_to_operators({
-        "type": "call_updated",
-        "call": call.model_dump(mode="json"),
-        "operators": [op.model_dump(mode="json") for op in call_manager.get_all_operators()]
-    })
-    return {
-        "call": call,
-        "assigned_operator": assigned_op.name if assigned_op else None,
-        "queue_position": queue_pos
-    }
-
-@router.post("/{call_id}/takeover", response_model=CallRecord)
-async def operator_takeover(
-    call_id: str,
-    operator_name: str = Body("Navbatchi Operator #1", embed=True),
-    operator_id: Optional[str] = Body(None, embed=True)
-):
-    call = call_manager.operator_takeover(call_id, operator_name=operator_name, operator_id=operator_id)
-    if not call:
-        raise HTTPException(status_code=404, detail="Qo'ng'iroq topilmadi")
-    await ws_manager.broadcast_to_call(call_id, {
-        "type": "operator_joined",
-        "operator_name": operator_name
-    })
-    await ws_manager.broadcast_to_operators({
-        "type": "call_updated",
-        "call": call.model_dump(mode="json"),
-        "operators": [o.model_dump(mode="json") for o in call_manager.get_all_operators()]
-    })
-    await ws_manager.broadcast_queue_updates()
-    return call
-
-@router.post("/{call_id}/operator-message", response_model=CallRecord)
-async def operator_send_message(call_id: str, text: str = Body(..., embed=True), operator_name: str = Body("Operator", embed=True)):
-    call = call_manager.get_call(call_id)
-    if not call:
-        raise HTTPException(status_code=404, detail="Qo'ng'iroq topilmadi")
-    msg = MessageSchema(
-        id=f"op-{uuid.uuid4().hex[:6]}",
-        role=SpeakerRole.OPERATOR,
-        text=text
-    )
-    call_manager.add_message(call_id, msg)
-    await ws_manager.broadcast_to_call(call_id, {
-        "type": "new_message",
-        "call_id": call_id,
-        "message": msg.model_dump(mode="json")
-    })
-    await ws_manager.broadcast_to_operators({
-        "type": "call_updated",
-        "call": call_manager.get_call(call_id).model_dump(mode="json")
-    })
-    await ws_manager.broadcast_to_admin_listeners(call_id, {
-        "type": "ghost_message",
-        "call_id": call_id,
-        "role": "operator",
-        "text": text,
-        "timestamp": msg.timestamp.isoformat() if hasattr(msg.timestamp, "isoformat") else str(msg.timestamp)
-    })
-    return call
 
 @router.post("/{call_id}/complete")
 async def complete_call(
     call_id: str,
-    summary: Optional[str] = Body(None, embed=True),
-    operator_id: Optional[str] = Body(None, embed=True)
+    summary: Optional[str] = Body(None, embed=True)
 ):
-    call, next_call = call_manager.complete_call(call_id, summary=summary, operator_id=operator_id)
+    call, _ = call_manager.complete_call(call_id, summary=summary)
     if not call:
         raise HTTPException(status_code=404, detail="Qo'ng'iroq topilmadi")
     
@@ -402,34 +280,17 @@ async def complete_call(
         "status": "completed",
         "summary": summary
     })
-    if next_call:
-        await ws_manager.broadcast_to_call(next_call.id, {
-            "type": "operator_assigned",
-            "operator_name": next_call.assigned_operator or "Operator",
-            "message": f"Navbatingiz keldi. Siz navbatchi operator {next_call.assigned_operator or 'Operator'}ga ulandingiz."
-        })
-    await ws_manager.broadcast_queue_updates()
-    await ws_manager.broadcast_to_operators({
-        "type": "call_completed",
-        "call_id": call_id,
-        "calls": [c.model_dump(mode="json") for c in call_manager.get_all_calls()],
-        "operators": [o.model_dump(mode="json") for o in call_manager.get_all_operators()]
-    })
     await ws_manager.broadcast_to_admins({
         "type": "call_completed",
         "call_id": call_id,
-        "calls": [c.model_dump(mode="json") for c in call_manager.get_all_calls()],
-        "operators": [o.model_dump(mode="json") for o in call_manager.get_all_operators()]
+        "calls": [c.model_dump(mode="json") for c in call_manager.get_all_calls()]
     })
 
     # Await Supabase archiving
     try:
         from app.services.supabase_service import supabase_service
         await supabase_service.archive_call_record(call)
-    except Exception as e:
+    except Exception:
         pass
 
-    return {
-        "completed_call": call,
-        "next_assigned_call": next_call
-    }
+    return {"completed_call": call}

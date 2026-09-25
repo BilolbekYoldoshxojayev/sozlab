@@ -1,13 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
-import { HelpCircle, ChevronDown, ChevronUp, BookOpen, ExternalLink, Sparkles, Send, Volume2 } from 'lucide-react';
+import { HelpCircle, ChevronDown, ChevronUp, BookOpen, ExternalLink, Sparkles, Volume2, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 
 interface FAQCategory {
   id: string;
   name: string;
-  icon?: string;
   items: Array<{
     q: string;
     a: string;
@@ -18,107 +17,93 @@ interface FAQCategory {
 
 export const FAQ_DATA: FAQCategory[] = [
   {
-    id: 'qabul',
-    name: 'Qabul va Hujjatlar (my.uzbmb.uz)',
+    id: 'maktab',
+    name: 'Maktab Ta\'limi & Pul Yig\'ish',
     items: [
       {
-        q: 'OTMlarga bakalavriatga qabul qachon boshlanadi va nechta yo\'nalish tanlash mumkin?',
-        a: 'Oliy ta\'lim muassasalariga qabul har yili 5-iyundan 25-iyungacha my.uzbmb.uz hamda my.gov.uz portallari orqali onlayn amalga oshiriladi. Abituriyentlar bitta ta\'lim shakli (kunduzgi, sirtqi, kechki yoki masofaviy) doirasida fanlar majmuasi bir xil bo\'lgan 5 tagacha bakalavriat ta\'lim yo\'nalishini tanlash huquqiga ega.',
-        regulation: 'Vazirlar Mahkamasining 2019-yil 7-iyundagi 468-son qarori.',
-        link: 'https://my.uzbmb.uz',
+        q: 'Maktabda o\'quvchilardan yoki ota-onalardan pul yig\'ish (fond, ta\'mirlash, bayramlar) qonuniymi?',
+        a: 'Mutlaqo noqonuniy va qat\'iyan taqiqlangan! Konstitutsiyaning 50-moddasiga ko\'ra davlat umumiy o\'rta ta\'lim olishni bepul kafolatlaydi. Maktablarni ta\'mirlash va jihozlash to\'liq davlat budjetidan moliyalashtiriladi. Pul yig\'gan maktab rahbarlari va xodimlari ma\'muriy (MJtK 61) hamda jinoiy (JK 165, 205) javobgarlikka tortiladi.',
+        regulation: 'Konstitutsiya 50-moddasi; "Ta\'lim to\'g\'risida"gi Qonun 4-moddasi; JK 165, 205-moddalari.',
+        link: 'https://lex.uz',
       },
       {
-        q: 'Abituriyent ro\'yxatdan o\'tishi uchun qanday hujjatlar talab etiladi?',
-        a: 'Fuqarolik pasporti yoki ID-karta ma\'lumotlari (JSHSHIR), umumiy o\'rta (11-sinf) yoki o\'rta maxsus ta\'lim muassasasini tugatganligi haqidagi attestat/diplom, shuningdek agar mavjud bo\'lsa, xorijiy til yoki umumta\'lim fanlari bo\'yicha milliy/xalqaro sertifikat.',
-        regulation: 'Vazirlar Mahkamasining 2024-yil 24-maydagi 304-son qarori.',
+        q: 'Bolani 1-sinfga qabul qilish tartibi va yoshi qanday belgilangan?',
+        a: 'Bola 7 yoshga to\'ladigan yilda umumta\'lim maktabining 1-sinfiga qabul qilinadi (masalan, 2026-yilda 2019-yilda tug\'ilganlar). Qabul my.maktab.uz portali orqali 2 bosqichda: 1-bosqich mikrohudud bo\'yicha bepul va sinovsiz, 2-bosqich mikrohududdan tashqari bo\'sh o\'rinlar bo\'yicha amalga oshiriladi.',
+        regulation: '"Ta\'lim to\'g\'risida"gi Qonun 9-moddasi; VMQ-376.',
+        link: 'https://my.maktab.uz',
+      },
+      {
+        q: 'Yagona maktab formasi majburiymi? Ro\'mol va do\'ppi kiyishga ruxsat bormi?',
+        a: 'Yagona maktab formasi majburiy talab emas, balki tavsiyaviy hisoblanadi. O\'quvchi qizlarning oq yoki och rangli milliy ro\'mol o\'rab, o\'g\'il bolalarning do\'ppi kiyib kelishiga to\'sqinlik qilish qat\'iyan man etiladi. Forma yo\'qligi uchun o\'quvchini darsdan chetlatish noqonuniydir.',
+        regulation: 'Vazirlar Mahkamasining 666 va 271-son qarorlari.',
+      },
+    ],
+  },
+  {
+    id: 'pedagog',
+    name: 'Pedagoglar Huquqlari (O\'RQ-901)',
+    items: [
+      {
+        q: 'O\'qituvchilarni darsdan tashqari ishlarga (obodonlashtirish, hashar, obuna) jalb qilish mumkinmi?',
+        a: 'Qat\'iyan taqiqlanadi! Konstitutsiyaning 52-moddasiga ko\'ra o\'qituvchining sha\'ni va qadr-qimmati davlat himoyasidadir. O\'RQ-901 qonuniga binoan pedagoglarni obodonlashtirish, ko\'cha tozalash, majburiy obuna va hisobotlar yig\'ishga majburlash man etiladi. Buni buzgan mansabdorlarga BHMning 100 dan 150 baravarigacha jarima solinadi.',
+        regulation: 'Konstitutsiya 52-moddasi; Qonun O\'RQ-901; MJtK 51-moddasi 2-qismi.',
+        link: 'https://lex.uz',
+      },
+      {
+        q: 'Pedagog xodimlar uchun yillik mehnat ta\'tili necha kun?',
+        a: 'Umumta\'lim muassasalari pedagog xodimlariga davomiyligi 56 kalendar kuni bo\'lgan haq to\'lanadigan yillik uzaytirilgan asosiy mehnat ta\'tili beriladi.',
+        regulation: 'Mehnat kodeksi 501-moddasi; O\'RQ-901 12-moddasi.',
+      },
+      {
+        q: 'Maktab o\'qituvchilari uchun 1 stavka dars soati necha soat?',
+        a: 'Umumta\'lim muassasalarida 1-11-sinf o\'qituvchilari uchun haftalik bir stavka ish yuklamasi 16 akademik soat qilib belgilangan. Maksimal 1.5 stavkagacha (24 soat) dars berilishi mumkin.',
+        regulation: 'Vazirlar Mahkamasining 275-son qarori.',
       },
     ],
   },
   {
     id: 'grantlar',
-    name: 'Davlat Grantlari va GPA Tizimi',
+    name: 'OTM Qabuli va Grantlar (PF-81)',
     items: [
       {
-        q: 'Davlat granti 1-kursdan keyin qayta taqsimlanadimi?',
-        a: 'Ha, O\'zbekiston Respublikasi Prezidentining 2024-yil 24-maydagi PF-81-son Farmoniga muvofiq, 2024/2025-o\'quv yilidan boshlab davlat grantlari talabaning reyting ko\'rsatkichlari (GPA) asosida har o\'quv yili yakunida qayta taqsimlanadi. Yuqori o\'zlashtirgan talabalarga grant saqlanadi yoki shartnomada o\'qiyotgan iqtidorli talabalarga grant ajratiladi.',
+        q: '2024–2026-yillarda davlat grantlari har yili qanday qayta taqsimlanadi?',
+        a: 'PF-81-son Farmonga muvofiq, davlat grantlari talabaga butun o\'qish davri (4 yil) uchun kafolatlanmaydi. 1-kursda kirish ballariga ko\'ra beriladi, 2-kursdan boshlab esa HEMIS tizimidagi GPA natijalariga asosan a\'lochi talabalar o\'rtasida har yili qayta taqsimlanadi.',
         regulation: 'Prezidentning 2024-yil 24-maydagi PF-81-son Farmoni.',
+        link: 'https://lex.uz',
       },
       {
-        q: 'Ijtimoiy-rag\'batlantiruvchi grantlar qayta taqsimlanadimi?',
-        a: 'Yo\'q, ehtiyojmand oilalar xotin-qizlari, nogironligi bo\'lgan shaxslar, Mehribonlik uyi tarbiyalanuvchilari uchun ajratilgan maqsadli va ijtimoiy grantlar 4 yil davomida to\'liq saqlanib qoladi.',
-        regulation: 'Vazirlar Mahkamasining 2021-yil 17-sentabrdagi 576-son qarori.',
-      },
-    ],
-  },
-  {
-    id: 'kontrakt',
-    name: 'Kontrakt va Tabaqalashtirilgan Shartnoma',
-    items: [
-      {
-        q: 'Super-kontrakt arizasini topshirish va to\'lash tartibi qanday?',
-        a: 'Kirish imtihonlarida to\'plash mumkin bo\'lgan eng yuqori ballning kamida 30% ini (56,7 ball) to\'plagan va qabul chegarasiga 4,05 balldan ortiq yetmagan abituriyentlar tabaqalashtirilgan to\'lov-shartnoma (super-kontrakt) asosida o\'qishga qabul qilinadi. Ariza OTM rektori nomiga yoziladi yoki my.uzbmb.uz orqali shakllantiriladi.',
-        regulation: 'Davlat komissiyasining har yillik 1-son bayoni.',
-      },
-      {
-        q: 'Bazaviy kontrakt to\'lovini bo\'lib-bo\'lib to\'lash mumkinmi?',
-        a: 'Ha, talabalar to\'lov-shartnoma mablag\'larini o\'quv yili davomida teng 4 qismga bo\'lib to\'lashlari mumkin: kamida 25% — 15-sentabrgacha, 50% — 1-yanvargacha, 75% — 1-aprelgacha va 100% — 1-iyulgacha.',
-        regulation: 'Oliy va o\'rta maxsus ta\'lim vazirligi Nizomi.',
-      },
-    ],
-  },
-  {
-    id: 'ttj',
-    name: 'Talabalar Turar Joyi (TTJ) va Ijara',
-    items: [
-      {
-        q: 'Yotoqxonaga ariza qayerdan topshiriladi va kimlarga imtiyoz beriladi?',
-        a: 'Talabalar turar joyiga joylashish uchun arizalar har yili 1-avgustdan boshlab my.gov.uz portali orqali elektron qabul qilinadi. Temir daftar, Ayollar daftari yoki Yoshlar daftarida turgan, nogironligi bo\'lgan hamda 1-kurs talabalariga ustuvor navbat beriladi.',
-        regulation: 'Vazirlar Mahkamasining 2023-yil 8-avgustdagi 345-son qarori.',
+        q: 'Davlat OTMlari magistraturasida o\'qiyotgan xotin-qizlar kontrakti qanday qoplanadi?',
+        a: 'Barcha davlat OTMlarining magistratura mutaxassisliklariga to\'lov-kontrakt asosida qabul qilingan xotin-qizlarning to\'lov-kontrakti davlat budjeti mablag\'lari hisobidan 100% qaytarish shartisiz to\'lab beriladi.',
+        regulation: 'Vazirlar Mahkamasining 2022-yil 15-avgustdagi 447-son qarori.',
         link: 'https://my.gov.uz',
       },
       {
-        q: 'Ijara to\'lovining 50 foizi qanday qoplab beriladi?',
-        a: 'Davlat OTMlarida kunduzgi ta\'limda tahsil olib, ijarada yashaydigan talabalarga oylik ijara to\'lovining 50 foizi (Toshkent shahrida BHMning 1 baravari, viloyatlarda BHMning 0,5 baravari miqdorida) davlat byudjeti hisobidan qoplab beriladi.',
-        regulation: 'Prezidentning 2021-yil 13-apreldagi PQ-5071-son qarori.',
-      },
-    ],
-  },
-  {
-    id: 'nostrifikatsiya',
-    name: 'Diplom Tan Olish (Nostrifikatsiya)',
-    items: [
-      {
-        q: 'Xorijiy diplomni tan olish tartibi qanday? TOP-1000 universitetlar imtihonsiz o\'tadimi?',
-        a: 'Ha, xalqaro e\'tirof etilgan Quacquarelli Symonds (QS), Times Higher Education (THE) yoki ARWU reytingida birinchi 1000 talikka kirgan oliygohlar diplomlari to\'g\'ridan-to\'g\'ri (maxsus sinov imtihonlarisiz) my.gov.uz orqali tan olinadi va guvohnoma beriladi.',
-        regulation: 'Vazirlar Mahkamasining 2019-yil 24-iyuldagi 620-son qarori.',
-      },
-      {
-        q: 'Nostrifikatsiya qilish uchun ariza qancha muddatda ko\'rib chiqiladi?',
-        a: 'To\'g\'ridan-to\'g\'ri tan olinadigan diplomlar 10 ish kunida, maxsus sinov talab etiladigan diplomlar esa tegishli imtihon o\'tkazilgandan so\'ng 15 ish kunida rasmiylashtiriladi.',
-        regulation: 'Ta\'lim sifatini nazorat qilish davlat inspeksiyasi reglamenti.',
+        q: 'Ijara xonadonida yashaydigan talabalarga 50 foiz ijara kompensatsiyasi to\'lanadimi?',
+        a: 'Ha! Davlat OTMlarining kunduzgi bo\'limida ijarada turuvchi talabalarga oylik ijara to\'lovining 50 foizi: Toshkent shahrida BHMning 1 baravarigacha, viloyatlarda esa 0.5 baravarigacha budjetdan to\'lab beriladi.',
+        regulation: 'Vazirlar Mahkamasining 2021-yil 24-sentyabrdagi 605-son qarori.',
       },
     ],
   },
   {
     id: 'kredit',
-    name: 'Ta\'lim Krediti va Imtiyozlar',
+    name: 'Ta\'lim Krediti & Ijtimoiy Kafolatlar',
     items: [
       {
-        q: 'Xotin-qizlar uchun foizsiz ta\'lim krediti qanday ajratiladi?',
-        a: 'Barcha davlat va nodavlat OTMlarda to\'lov-shartnoma asosida tahsil olayotgan xotin-qizlar uchun tijorat banklari tomonidan Markaziy bankning amaldagi stavkasida ta\'lim krediti ajratiladi, biroq foiz to\'lovlari to\'liq Ta\'lim kreditini moliyalashtirish jamg\'armasi hisobidan qoplanadi. Talaba faqat asosiy qarzni o\'qishni tugatgandan so\'ng 7-oydan boshlab 7 yil davomida qaytaradi.',
-        regulation: 'Prezidentning 2022-yil 18-iyuldagi PQ-323-son qarori.',
+        q: 'Xotin-qizlar uchun ta\'lim krediti haqiqatan ham foizsizmi?',
+        a: 'Ha! Kunduzgi ta\'limda o\'qiyotgan xotin-qizlarning ta\'lim krediti foizlari to\'liq Moliya vazirligi Jamg\'armasi hisobidan qoplanadi (talabaga 0%). Asosiy qarz esa o\'qish tugagach 7-oydan boshlab 7 yil davomida qaytariladi.',
+        regulation: 'Vazirlar Mahkamasining 2021-yil 18-avgustdagi 527-son qarori.',
       },
       {
-        q: 'Ta\'lim kreditini olish uchun qaysi hujjatlar kerak?',
-        a: 'Tijorat bankiga: 1) Ariza, 2) Shaxsni tasdiqlovchi hujjat, 3) To\'lov-shartnoma (kontrakt), 4) Kafil yoki garov ta\'minoti (xotin-qizlar va "Ijtimoiy himoya yagona reyestri" dagilarga kafil talab etilmaydi).',
-        regulation: 'Vazirlar Mahkamasining 2021-yil 18-avgustdagi 527-son qarori.',
+        q: 'Inklyuziv ta\'lim nima va nogironligi bo\'lgan bolalar oddiy maktabda o\'qiy oladimi?',
+        a: 'Ha! Qonun bo\'yicha barcha umumta\'lim maktablarida alohida ta\'lim ehtiyojlari bo\'lgan bolalar uchun inklyuziv sinflar ochilishi shart. Nogironligi bo\'lgan bolalarni oddiy maktabga qabul qilishdan bosh tortish qat\'iyan taqiqlanadi.',
+        regulation: 'Konstitutsiya 50-moddasi; "Ta\'lim to\'g\'risida"gi Qonun 20-moddasi; PQ-4860.',
       },
     ],
   },
 ];
 
 export default function CommonQuestions() {
-  const [activeCategory, setActiveCategory] = useState<string>('qabul');
+  const [activeCategory, setActiveCategory] = useState<string>('maktab');
   const [openItems, setOpenItems] = useState<Record<string, boolean>>({});
 
   const toggleItem = (key: string) => {
@@ -128,41 +113,43 @@ export default function CommonQuestions() {
   const selectedCategory = FAQ_DATA.find((c) => c.id === activeCategory) || FAQ_DATA[0];
 
   return (
-    <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden p-6 sm:p-8">
+    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 sm:p-8 text-zinc-100">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-6 mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-zinc-800 pb-5 mb-6">
         <div>
-          <div className="flex items-center space-x-2 text-emerald-600 mb-1">
-            <BookOpen className="w-5 h-5" />
-            <span className="text-xs font-bold uppercase tracking-wider">Rasmiy Yo&apos;riqnomalar</span>
+          <div className="flex items-center space-x-2 text-zinc-400 mb-1">
+            <BookOpen className="w-4 h-4 text-emerald-400" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
+              Rasmiy Yuridik Bilimlar Bazasi
+            </span>
           </div>
-          <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-            Vazirlik Bo&apos;yicha Ko&apos;p So&apos;raladigan Rasmiy Savollar (FAQ)
+          <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+            TOP-50 Rasmiy Savol-Javob To&apos;plami
           </h2>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Prezident Farmonlari va Vazirlar Mahkamasi qarorlariga asoslangan eng ishonchli javoblar
+          <p className="text-xs text-zinc-400 mt-1">
+            Konstitutsiya, Qonunlar va Hukumat qarorlariga asoslangan rasmiy javoblar
           </p>
         </div>
 
         <Link
           href="/call"
-          className="inline-flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-md shadow-emerald-700/20 transition-all active:scale-95 shrink-0"
+          className="inline-flex items-center justify-center space-x-2 px-4 py-2 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs transition active:scale-95 shrink-0"
         >
-          <Sparkles className="w-4 h-4" />
+          <Sparkles className="w-3.5 h-3.5" />
           <span>Ovozli Muloqotda So&apos;rash</span>
         </Link>
       </div>
 
       {/* Category Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-3 mb-6 scrollbar-none">
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 mb-5 scrollbar-none">
         {FAQ_DATA.map((cat) => (
           <button
             key={cat.id}
             onClick={() => setActiveCategory(cat.id)}
-            className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition ${
               activeCategory === cat.id
-                ? 'bg-[#0b2b50] text-white shadow-sm'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+                ? 'bg-zinc-800 text-white border border-zinc-700'
+                : 'bg-zinc-950/60 text-zinc-400 hover:text-zinc-200 border border-zinc-800/80'
             }`}
           >
             {cat.name}
@@ -171,7 +158,7 @@ export default function CommonQuestions() {
       </div>
 
       {/* Accordion Questions */}
-      <div className="space-y-3">
+      <div className="space-y-2.5">
         {selectedCategory.items.map((item, idx) => {
           const itemKey = `${selectedCategory.id}-${idx}`;
           const isOpen = !!openItems[itemKey];
@@ -179,34 +166,34 @@ export default function CommonQuestions() {
           return (
             <div
               key={itemKey}
-              className={`rounded-2xl border transition-all ${
-                isOpen ? 'border-blue-200 bg-blue-50/20 shadow-xs' : 'border-slate-200 hover:border-slate-300'
+              className={`rounded-xl border transition ${
+                isOpen ? 'border-zinc-700 bg-zinc-950/80' : 'border-zinc-800/80 bg-zinc-950/40 hover:border-zinc-700'
               }`}
             >
               <button
                 onClick={() => toggleItem(itemKey)}
-                className="w-full text-left p-4 sm:p-5 flex items-start justify-between gap-4 cursor-pointer"
+                className="w-full text-left p-4 flex items-start justify-between gap-4 cursor-pointer"
               >
                 <div className="flex items-start space-x-3">
-                  <div className="p-1.5 rounded-lg bg-blue-100 text-blue-800 shrink-0 mt-0.5">
-                    <HelpCircle className="w-4 h-4" />
+                  <div className="p-1 rounded bg-zinc-800 text-zinc-300 shrink-0 mt-0.5">
+                    <HelpCircle className="w-3.5 h-3.5" />
                   </div>
-                  <span className="font-semibold text-sm text-slate-900 leading-snug">
+                  <span className="font-semibold text-xs sm:text-sm text-zinc-100 leading-snug">
                     {item.q}
                   </span>
                 </div>
-                <div className="text-slate-400 p-1">
+                <div className="text-zinc-500 p-0.5">
                   {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                 </div>
               </button>
 
               {isOpen && (
-                <div className="px-5 pb-5 pt-1 text-xs text-slate-700 leading-relaxed border-t border-slate-100 animate-in fade-in duration-200">
+                <div className="px-4 pb-4 pt-1 text-xs text-zinc-300 leading-relaxed border-t border-zinc-800/80 animate-fade-in">
                   <p className="mb-3">{item.a}</p>
 
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-3 border-t border-slate-200/60 bg-white/70 p-3 rounded-xl">
-                    <div className="text-[11px] text-slate-500">
-                      <strong>Rasmiy Asos:</strong> {item.regulation}
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 pt-2.5 border-t border-zinc-800/80 bg-zinc-900/60 p-2.5 rounded-lg">
+                    <div className="text-[11px] text-zinc-400">
+                      <strong className="text-zinc-300">Qonuniy Asos:</strong> {item.regulation}
                     </div>
 
                     <div className="flex items-center space-x-2">
@@ -215,18 +202,18 @@ export default function CommonQuestions() {
                           href={item.link}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center space-x-1 text-blue-600 hover:text-blue-800 text-[11px] font-semibold"
+                          className="inline-flex items-center space-x-1 text-zinc-400 hover:text-white text-[11px] font-medium"
                         >
-                          <span>Portalga o&apos;tish</span>
-                          <ExternalLink className="w-3 h-3" />
+                          <span>lex.uz</span>
+                          <ExternalLink className="w-2.5 h-2.5" />
                         </a>
                       )}
                       <Link
-                        href={`/call`}
-                        className="inline-flex items-center space-x-1 text-emerald-700 hover:text-emerald-900 text-[11px] font-bold bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200"
+                        href="/call"
+                        className="inline-flex items-center space-x-1 text-zinc-200 hover:text-white text-[11px] font-semibold bg-zinc-800 px-2.5 py-1 rounded border border-zinc-700"
                       >
-                        <Volume2 className="w-3 h-3" />
-                        <span>AI bilan muloqot</span>
+                        <Volume2 className="w-3 h-3 text-emerald-400" />
+                        <span>Ovozli Tinglash</span>
                       </Link>
                     </div>
                   </div>
