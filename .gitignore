@@ -35,6 +35,8 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+cache/
+backend/cache/
 
 # Coverage
 coverage/
@@ -44,3 +46,6 @@ htmlcov/
 *.pem
 *.key
 secrets/
+
+# Agent runtime logs and artifacts
+.agents/
