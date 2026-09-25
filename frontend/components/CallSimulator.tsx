@@ -449,11 +449,11 @@ export default function CallSimulator() {
 
   // Closed caption display text
   let liveCaptionSpeaker = 'SözLab AI';
-  let liveCaptionText = 'O\'zbek tilida gapiring, sun\'iy intellekt darhol javob beradi...';
+  let liveCaptionText = 'O\'zbek tilida savolingizni bering...';
 
   if (isOperatorActive) {
     liveCaptionSpeaker = isOperatorSpeaking ? (activeCall.assigned_operator || 'Operator') : 'Siz (Fuqaro)';
-    liveCaptionText = liveOperatorCaption || (isOperatorSpeaking ? 'Operator mikrofondan gapirmoqda...' : 'Operator bilan jonli audio muloqot faol. Bemalol gapiring...');
+    liveCaptionText = liveOperatorCaption || (isOperatorSpeaking ? 'Operator mikrofondan gapirmoqda...' : 'Operator bilan audio muloqot faol');
   } else if (mode === 'recording') {
     liveCaptionSpeaker = 'Siz (Fuqaro)';
     liveCaptionText = 'Tinglanmoqda... Istalgan savolingizni bering.';
@@ -662,14 +662,14 @@ export default function CallSimulator() {
         {/* Dynamic Orb Helper Description */}
         <p className="mt-4 text-xs font-medium text-slate-400 text-center tracking-wide">
           {mode === 'recording'
-            ? 'Ovoz balandligi darajasiga qarab orb kengayadi. To\'xtatish uchun qayta bosing.'
+            ? 'Tinglanmoqda... To\'xtatish uchun bosing'
             : mode === 'speaking'
-            ? 'AI javobini tinglamoqdasiz. Ovozli javob to\'xtagach gapirishingiz mumkin.'
+            ? 'Ovozli javob berilmoqda...'
             : mode === 'thinking'
-            ? 'Gemini multimodal tahlili ishlamoqda...'
+            ? 'Javob tayyorlanmoqda...'
             : activeCall
-            ? 'Oliy ta\'lim vazirligi 1006 ishonch liniyasi faol.'
-            : 'Vazirlik ovozli AI call-markaziga ulanish uchun bosing.'}
+            ? '1006 ishonch liniyasi faol'
+            : 'Qo\'ng\'iroqni boshlash uchun bosing'}
         </p>
       </div>
 
@@ -788,7 +788,7 @@ export default function CallSimulator() {
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-amber-400" />
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-200">
-                  Tezkor Demo Savollar (1-klik orqali yuborish)
+                  Tezkor Savollar
                 </h4>
               </div>
               <button
@@ -863,7 +863,7 @@ export default function CallSimulator() {
               Suhbat Yakunlandi
             </h3>
             <p className="text-xs text-slate-300 text-center mt-1">
-              Oliy ta&apos;lim, fan va innovatsiyalar vazirligi call-markazi muloqot xulosasi
+              Muloqot yakuni va xulosasi
             </p>
 
             {/* Summary Details Grid */}
@@ -901,14 +901,14 @@ export default function CallSimulator() {
               <div className="pt-1">
                 <span className="text-slate-400 block mb-1">Xulosa va tavsiya:</span>
                 <p className="text-[11px] text-slate-200 bg-slate-900/60 p-2.5 rounded-xl border border-slate-700/50 leading-relaxed">
-                  {activeCall?.resolution_summary || 'Fuqaroning ta\'lim me\'yorlari bo\'yicha barcha savollariga to\'liq va rasmiy javob berildi.'}
+                  {activeCall?.resolution_summary || 'Murojaat bo\'yicha to\'liq ma\'lumot berildi.'}
                 </p>
               </div>
 
               {/* Supabase Archiving Badge */}
               <div className="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-400/30 text-emerald-200 text-xs">
                 <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-400" />
-                <span>Barcha ma&apos;lumotlar va to&apos;liq transkripsiya Supabase bazasiga avtomatik arxivlandi.</span>
+                <span>Muloqot protokoli arxivlandi.</span>
               </div>
             </div>
 

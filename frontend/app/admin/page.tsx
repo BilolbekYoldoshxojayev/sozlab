@@ -11,6 +11,7 @@ import {
   fetchCalls, fetchOperators, fetchAnalytics, fetchKnowledge,
   startNewCall, getAdminWebSocketUrl, getAudioFullUrl
 } from '@/lib/api';
+import RoleProtectedPage from '@/components/RoleProtectedPage';
 
 interface GhostTurn {
   id: string;
@@ -231,7 +232,8 @@ export default function AdminPage() {
   );
 
   return (
-    <div className="space-y-8">
+    <RoleProtectedPage allowedRoles={['admin']}>
+      <div className="space-y-8">
       {/* Hidden audio element for Ghost Mode silent eavesdropping */}
       <audio ref={adminAudioRef} autoPlay className="hidden" />
 
@@ -254,7 +256,7 @@ export default function AdminPage() {
             Vazirlik Ma&apos;muri Boshqaruv Markazi
           </h1>
           <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-2xl">
-            Sun&apos;iy intellekt agentlari, navbatchi operatorlar xizmati, jonli FIFO navbat va normativ bilimlar bazasini real-vaqtda boshqarish.
+            AI agentlari, navbatchi operatorlar floti va jonli navbat boshqaruvi.
           </p>
         </div>
 
@@ -337,14 +339,14 @@ export default function AdminPage() {
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-bold text-base text-slate-900">
-                  Jonli Muloqotlar Oqimi (Active Calls Live Table)
+                  Faol Qo&apos;ng&apos;iroqlar
                 </h3>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">
                   {activeCalls.length} ta faol
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                AI va operatorlar orqali hozir ayni paytda o&apos;tkazilayotgan barcha jonli suhbatlar
+                Ayni vaqtdagi jonli muloqotlar monitoringi
               </p>
             </div>
           </div>
@@ -359,9 +361,9 @@ export default function AdminPage() {
         {activeCalls.length === 0 ? (
           <div className="py-10 text-center text-slate-400 text-xs">
             <PhoneCall className="w-10 h-10 text-slate-300 mx-auto mb-2 opacity-60" />
-            <p className="font-semibold text-slate-700 text-sm">Hozirda jonli davom etayotgan qo&apos;ng&apos;iroq yo&apos;q</p>
+            <p className="font-semibold text-slate-700 text-sm">Hozirda faol qo&apos;ng&apos;iroqlar mavjud emas.</p>
             <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
-              Fuqaro &quot;/call&quot; sahifasidan qo&apos;ng&apos;iroq boshlaganda yoki yuqoridagi &quot;Test Qo&apos;ng&apos;iroq Yaratish&quot; tugmasini bosganingizda ushbu jadvalda paydo bo&apos;ladi.
+              Hozirda faol qo&apos;ng&apos;iroqlar mavjud emas. Yangi qo&apos;ng&apos;iroqlar ushbu ro&apos;yxatda real vaqtda aks etadi.
             </p>
           </div>
         ) : (
@@ -459,7 +461,7 @@ export default function AdminPage() {
                       Jonli Teleprompter &amp; Yashirin Kuzatuv
                     </h4>
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                      🔒 100% Invisible • Fuqaro va operatorga bildirilmaydi
+                      🔒 Yashirin Kuzatuv Rejimi
                     </span>
                   </div>
                   <p className="text-xs text-slate-300 mt-0.5">
@@ -485,7 +487,7 @@ export default function AdminPage() {
             <div className="mt-4 max-h-72 overflow-y-auto p-4 rounded-xl bg-slate-950/80 border border-purple-500/20 space-y-3 font-mono text-xs">
               {ghostMessages.length === 0 ? (
                 <div className="py-8 text-center text-slate-500">
-                  Transkripsiya kutilmoqda... So&apos;zlashuv boshlanishi bilan bu yerda real-vaqtda oqib keladi.
+                  Transkripsiya kutilmoqda...
                 </div>
               ) : (
                 ghostMessages.map((msg, idx) => (
@@ -583,7 +585,7 @@ export default function AdminPage() {
           </div>
 
           <div className="mt-4 pt-4 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
-            <span>Taqsimot qoidasi: <strong>Band bo&apos;lsa 2-operatorga, keyin 3-ga, barchasi band bo&apos;lsa FIFO navbatga</strong></span>
+            <span>Taqsimot qoidasi: <strong>FIFO taqsimot qoidasi asosida</strong></span>
           </div>
         </div>
 
@@ -646,7 +648,7 @@ export default function AdminPage() {
           <div className="flex items-center space-x-2">
             <Database className="w-5 h-5 text-purple-700" />
             <h3 className="font-bold text-base text-slate-900">
-              Vazirlik Normativ-Huquqiy Bilimlar Bazasi (RAG Manbalari)
+              Normativ Bilimlar Bazasi
             </h3>
           </div>
           <span className="text-xs text-slate-500">Jami modullar: {knowledge.length} ta</span>
@@ -670,5 +672,6 @@ export default function AdminPage() {
         </div>
       </div>
     </div>
+  </RoleProtectedPage>
   );
 }

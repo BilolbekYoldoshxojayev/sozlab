@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { CallRecord } from '@/lib/types';
 import { fetchCalls, getAudioFullUrl } from '@/lib/api';
+import RoleProtectedPage from '@/components/RoleProtectedPage';
 
 export default function HistoryPage() {
   const [calls, setCalls] = useState<CallRecord[]>([]);
@@ -39,7 +40,8 @@ export default function HistoryPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6">
+    <RoleProtectedPage allowedRoles={['operator', 'admin']}>
+      <div className="flex flex-col gap-6">
       {/* Header */}
       <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -212,5 +214,6 @@ export default function HistoryPage() {
         </div>
       </div>
     </div>
+  </RoleProtectedPage>
   );
 }

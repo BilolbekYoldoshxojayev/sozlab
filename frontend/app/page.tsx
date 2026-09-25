@@ -1,6 +1,8 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 import {
   PhoneCall, Headset, BarChart3, ShieldCheck, Sparkles,
   BookOpen, Clock, Bot, ArrowRight, Zap, CheckCircle2,
@@ -10,55 +12,60 @@ import CommonQuestions from '@/components/CommonQuestions';
 import { useRole } from '@/lib/useRole';
 
 export default function HomePage() {
-  const { setRole } = useRole();
+  const router = useRouter();
+  const { session, isReady, hasSelectedRole, setRole } = useRole();
+
+  useEffect(() => {
+    if (isReady && hasSelectedRole) {
+      if (session.role === 'operator') {
+        router.replace('/operator');
+      } else if (session.role === 'admin') {
+        router.replace('/admin');
+      }
+    }
+  }, [isReady, hasSelectedRole, session.role, router]);
 
   const highlights = [
     {
-      title: 'O\'zbek Tili Ovozli AI',
-      desc: 'Edge-TTS va Gemini Dialog Manager orqali tabiiy o\'zbek tili nutqi, real-vaqt ovoz tahlili va transkripsiya.',
+      title: 'Dual-AI Ovozli Muloqot',
+      desc: 'Aisha AI va Edge-TTS orqali uzluksiz, tabiiy o\'zbek tilida ovozli muloqot va real vaqtli transkripsiya (< 1.2s javob tezligi).',
       icon: Sparkles,
       color: 'bg-emerald-50 text-emerald-700 border-emerald-200',
     },
     {
-      title: 'Vazirlik Bilimlar Bazasi',
-      desc: 'Qabul, grantlar, super-kontrakt, TTJ yotoqxona, nostrifikatsiya va ta\'lim krediti bo\'yicha rasmiy normativ ma\'lumotlar.',
+      title: 'Rasmiy Bilimlar Bazasi',
+      desc: 'Qabul, grant, super-kontrakt, TTJ va nostrifikatsiya bo\'yicha vazirlikning tasdiqlangan rasmiy me\'yorlari (100% rasmiy manba).',
       icon: BookOpen,
       color: 'bg-blue-50 text-blue-700 border-blue-200',
     },
     {
-      title: 'Smart Operator & FIFO Navbat',
-      desc: 'Operator 1 band bo\'lsa 2-ga, barchasi band bo\'lsa jonli FIFO navbatga qo\'yish va tartib raqamini real-vaqtda ko\'rsatish.',
+      title: 'Aqlli FIFO Navbat',
+      desc: 'Murakkab murojaatlarni navbatchi operatorlar flotiga avtomatik va kechikishsiz yo\'naltirish (Zero-drop dispatch).',
       icon: Headset,
       color: 'bg-amber-50 text-amber-700 border-amber-200',
-    },
-    {
-      title: '3 Darajali Tizim Arxitekturasi',
-      desc: 'Fuqaro (Citizen), Inson-Operator (Call-Center) va Vazirlik Ma\'muri (Admin) uchun alohida avtonom boshqaruv o\'rinlari.',
-      icon: Shield,
-      color: 'bg-purple-50 text-purple-700 border-purple-200',
     },
   ];
 
   const steps = [
     {
       step: '01',
-      title: 'Fuqaro Ovozli Qo\'ng\'iroq Qiladi',
-      desc: 'Brauzer orqali mikrofon yordamida o\'zbek tilida savolini beradi yoki tezkor savolni tanlaydi.',
+      title: 'Ovozli Murojaat',
+      desc: 'Mikrofon orqali savolingizni tabiiy o\'zbek tilida bering.',
     },
     {
       step: '02',
-      title: 'AI Savolni Tahlil Qiladi',
-      desc: 'Gemini Dialog Manager va rasmiy vazirlik me\'yoriy hujjatlaridan aniq, rasmiy asoslangan javob topadi.',
+      title: 'Tezkor Tahlil',
+      desc: 'Gemini va me\'yoriy baza asosida rasmiy javob topiladi.',
     },
     {
       step: '03',
-      title: 'Ovozli Javob Qaytariladi',
-      desc: 'Madina ayol ovozida tabiiy o\'zbek tilida javob beriladi va yozma protokol kiritiladi.',
+      title: 'Ovozli Javob',
+      desc: 'Tabiiy ovozda javob beriladi va jonli subtitr aks etadi.',
     },
     {
       step: '04',
-      title: 'Kerak Bo\'lsa Operatorga Yo\'naltiriladi',
-      desc: 'Murakkab masalalarda inson-operatorga uzatiladi; agar operatorlar band bo\'lsa, navbatda kutish joyi ko\'rsatiladi.',
+      title: 'Operator Yordami',
+      desc: 'Zarur hollarda qo\'ng\'iroq navbatchi operatorga uzatiladi.',
     },
   ];
 
@@ -72,7 +79,7 @@ export default function HomePage() {
         <div className="relative z-10 max-w-3xl">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/10 backdrop-blur border border-white/20 text-xs font-semibold text-amber-300 mb-6">
             <Sparkles className="w-3.5 h-3.5" />
-            <span>Namangan Umummilliy AI Xakaton — Ta&apos;lim Treki</span>
+            <span>Oliy Ta&apos;lim Ovozli AI Platformasi</span>
           </div>
 
           <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight leading-tight mb-6">
@@ -83,8 +90,7 @@ export default function HomePage() {
           </h1>
 
           <p className="text-base sm:text-lg text-slate-200 leading-relaxed mb-8 max-w-2xl font-normal">
-            Abituriyentlar, talabalar va ota-onalarning qabul, grantlar, super-kontrakt, yotoqxona va diplom tan olishga
-            oid savollariga 24/7 rejimida tabiiy o&apos;zbek tilida ovozli javob beruvchi, inson-operatorlar navbati bilan integratsiyalashgan milliy platforma.
+            Oliy ta&apos;lim bo&apos;yicha barcha savollarga 24/7 rejimida tabiiy o&apos;zbek tilida tezkor ovozli javob beruvchi intellektual call-markaz.
           </p>
 
           <div className="flex flex-wrap items-center gap-4">
@@ -149,7 +155,7 @@ export default function HomePage() {
             3 Ta Alohida Rol Orqali Tizimga Kiring
           </h2>
           <p className="text-xs sm:text-sm text-slate-500">
-            Xakaton hakamlari va foydalanuvchilar har bir rolni alohida brauzer yoki lokal IP orqali sinab ko&apos;rishlari mumkin.
+            Tizimdan fuqaro, operator yoki vazirlik ma&apos;muri sifatida foydalaning.
           </p>
         </div>
 
@@ -220,7 +226,7 @@ export default function HomePage() {
       <CommonQuestions />
 
       {/* Core Advantages */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {highlights.map((h, i) => {
           const Icon = h.icon;
           return (
@@ -251,8 +257,7 @@ export default function HomePage() {
           </h2>
 
           <p className="text-xs sm:text-sm text-slate-500">
-            O&apos;zbekiston Respublikasi Vazirlar Mahkamasi va Oliy ta&apos;lim vazirligi rasmiy me&apos;yoriy bazasiga
-            integratsiyalashgan to&apos;liq tsiklli muloqot arxitekturasi.
+            Fuqaro murojaatidan to rasmiy ovozli javobgacha bo&apos;lgan to&apos;liq jarayon.
           </p>
         </div>
 

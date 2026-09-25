@@ -37,7 +37,7 @@ export default function OperatorLiveCall({
     {
       role: 'system',
       name: 'Tizim',
-      text: 'Jonli ovozli muloqot boshlandi. Mikrofon orqali gapiring.',
+      text: 'Jonli ovozli aloqa faol.',
     },
   ]);
 
@@ -158,7 +158,7 @@ export default function OperatorLiveCall({
   const handleEndCall = async () => {
     try {
       setIsArchiving(true);
-      const summary = `${topic} bo'yicha fuqaro murojaati operator ${operatorName} tomonidan to'liq ko'rib chiqildi va hal etildi.`;
+      const summary = `${topic}: operator ${operatorName} tomonidan hal etildi.`;
       
       // Send end_call signal via WebSocket so citizen tab also completes immediately
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -334,10 +334,10 @@ export default function OperatorLiveCall({
         {/* Descriptive Live Status */}
         <p className="mt-4 text-xs font-medium text-slate-400 text-center tracking-wide">
           {isCitizenSpeaking
-            ? 'Fuqaro mikrofondan gapirmoqda. Ovoz dinamikdan eshitilmoqda.'
+            ? 'Fuqaro gapirmoqda...'
             : isOperatorSpeaking
-            ? 'Sizning ovozingiz fuqaroga jonli uzatilmoqda.'
-            : 'Ikkala tomon ham ulandi. Mikrofon orqali bemalol gaplashing.'}
+            ? 'Siz gapiryapsiz...'
+            : 'Aloqa o\'rnatilgan'}
         </p>
       </div>
 
@@ -347,7 +347,7 @@ export default function OperatorLiveCall({
           <div className="flex items-center justify-between mb-1.5 text-xs font-semibold text-slate-400">
             <span className="flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5 text-blue-400" />
-              Real Vaqtli Jonli Subtitr (Live Closed Captions)
+              Jonli Subtitr
             </span>
             <span className="text-[10px] text-emerald-400 font-mono">LIVE STT</span>
           </div>
@@ -421,7 +421,7 @@ export default function OperatorLiveCall({
                 <CheckCircle2 className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-xl font-bold">Jonli Qo&apos;ng&apos;iroq Muvaffaqiyatli Yakunlandi</h3>
+                <h3 className="text-xl font-bold">Qo&apos;ng&apos;iroq Yakunlandi</h3>
                 <span className="text-xs text-slate-400">ID: {callId}</span>
               </div>
             </div>
@@ -450,7 +450,7 @@ export default function OperatorLiveCall({
               <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-500/15 border border-emerald-400/30 text-emerald-200 text-xs">
                 <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-400" />
                 <span>
-                  Barcha ma&apos;lumotlar va transkripsiya Supabase bazasiga avtomatik arxivlandi.
+                  Transkripsiya arxivlandi.
                 </span>
               </div>
             </div>

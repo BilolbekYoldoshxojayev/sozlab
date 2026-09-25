@@ -1,24 +1,30 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { PhoneCall, Headset, BarChart3, History, Shield, Sparkles, User, Settings, Users } from 'lucide-react';
-import { useRole } from '@/lib/useRole';
+import { PhoneCall, Headset, BarChart3, History, Shield, Sparkles, User, Settings } from 'lucide-react';
+import { useRole, UserRole } from '@/lib/useRole';
 import RoleGateModal from './RoleGateModal';
+
+interface NavItem {
+  href: string;
+  label: string;
+  icon: React.ElementType;
+  allowedRoles: UserRole[];
+}
+
+const ALL_NAV_LINKS: NavItem[] = [
+  { href: '/', label: 'Bosh Sahifa', icon: Sparkles, allowedRoles: ['citizen'] },
+  { href: '/call', label: 'Qo\'ng\'iroq Simulyatori', icon: PhoneCall, allowedRoles: ['citizen'] },
+  { href: '/operator', label: 'Operator Paneli', icon: Headset, allowedRoles: ['operator'] },
+  { href: '/admin', label: 'Admin Boshqaruvi', icon: Shield, allowedRoles: ['admin'] },
+  { href: '/analytics', label: 'Analitika', icon: BarChart3, allowedRoles: ['admin'] },
+  { href: '/history', label: 'Qo\'ng\'iroqlar Tarixi', icon: History, allowedRoles: ['operator', 'admin'] },
+];
 
 export default function Navbar() {
   const pathname = usePathname();
-  const { session, openRoleGate } = useRole();
-
-  const navLinks = [
-    { href: '/', label: 'Bosh Sahifa', icon: Sparkles },
-    { href: '/call', label: 'Qo\'ng\'iroq Simulyatori', icon: PhoneCall },
-    { href: '/operator', label: 'Operator Paneli', icon: Headset },
-    { href: '/admin', label: 'Admin Boshqaruvi', icon: Shield },
-    { href: '/analytics', label: 'Analitika', icon: BarChart3 },
-    { href: '/history', label: 'Qo\'ng\'iroqlar Tarixi', icon: History },
-  ];
+  const { session, openRoleGate, isReady } = useRole();
 
   const getRoleBadge = () => {
     if (session.role === 'admin') {
@@ -26,6 +32,9 @@ export default function Navbar() {
         label: 'Vazirlik Admin',
         color: 'bg-purple-100 text-purple-800 border-purple-200',
         icon: Shield,
+        ctaHref: '/admin',
+        ctaLabel: 'Boshqaruv Paneli',
+        ctaClass: 'bg-purple-700 hover:bg-purple-800 text-white shadow-purple-900/20',
       };
     }
     if (session.role === 'operator') {
@@ -33,17 +42,28 @@ export default function Navbar() {
         label: session.operatorName || 'Operator',
         color: 'bg-blue-100 text-blue-800 border-blue-200',
         icon: Headset,
+        ctaHref: '/operator',
+        ctaLabel: 'Operator Paneli',
+        ctaClass: 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-800/20',
       };
     }
     return {
       label: session.citizenName || 'Fuqaro',
       color: 'bg-emerald-100 text-emerald-800 border-emerald-200',
       icon: User,
+      ctaHref: '/call',
+      ctaLabel: "Qo'ng'iroq Qilish",
+      ctaClass: 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-700/20',
     };
   };
 
   const badge = getRoleBadge();
   const RoleIcon = badge.icon;
+
+  // Filter links dynamically according to active role
+  const visibleLinks = isReady
+    ? ALL_NAV_LINKS.filter((link) => link.allowedRoles.includes(session.role))
+    : [];
 
   return (
     <>
@@ -82,10 +102,9 @@ export default function Navbar() {
             </div>
           </Link>
 
-
-          {/* Navigation Links */}
+          {/* Dynamically Filtered Navigation Links */}
           <nav className="hidden xl:flex items-center gap-1">
-            {navLinks.map((link) => {
+            {visibleLinks.map((link) => {
               const Icon = link.icon;
               const isActive = pathname === link.href;
               return (
@@ -105,9 +124,8 @@ export default function Navbar() {
             })}
           </nav>
 
-          {/* Role Switcher & Live Call CTA */}
+          {/* Role Switcher & Dynamic Action CTA */}
           <div className="flex items-center gap-2.5">
-            {/* Role Button */}
             <button
               onClick={openRoleGate}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold shadow-xs transition hover:opacity-90 active:scale-95 ${badge.color}`}
@@ -119,11 +137,11 @@ export default function Navbar() {
             </button>
 
             <Link
-              href="/call"
-              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm shadow-emerald-700/20 hover:shadow-md transition-all active:scale-95"
+              href={badge.ctaHref}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold shadow-sm hover:shadow-md transition-all active:scale-95 ${badge.ctaClass}`}
             >
-              <PhoneCall className="w-3.5 h-3.5 animate-bounce" />
-              <span className="hidden sm:inline">Qo&apos;ng&apos;iroq Qilish</span>
+              <RoleIcon className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{badge.ctaLabel}</span>
             </Link>
           </div>
         </div>

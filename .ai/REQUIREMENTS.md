@@ -30,13 +30,23 @@
 - **FR-4.2**: Mavzular bo'yicha taqsimot grafiklari (Qabul, Grant, TTJ, Nostrifikatsiya, Kontrakt).
 - **FR-4.3**: Barcha qo'ng'iroqlar arxivi, qidiruv, audio tinglash va AI tomonidan yaratilgan qisqa xulosa (Executive Summary).
 
+### 5. Dual-AI Voice Processing (Aisha AI Primary + Gemini/Edge Fallback)
+- **FR-5.1**: O'zbek tili uchun Aisha AI API (`https://back.aisha.group`, `Gulnoza` modeli) asosiy ustuvor ovoz generatori (TTS) va transkriptori (STT) sifatida ishlashi.
+- **FR-5.2**: Agar Aisha AI tarmoq, limit yoki format xatoligi bersa, qo'ng'iroq uzilmasdan avtomatik ravishda Edge-TTS (`uz-UZ-MadinaNeural`) va Gemini dialog qatlamiga zaxira o'tishi (Zero downtime fallback).
+
+### 6. Role-Based Access Isolation & Concise UX
+- **FR-6.1**: Sahifalar qat'iy cheklovga ega bo'lishi: Fuqaro (`/call`), Operator (`/operator`), Admin (`/admin`). Boshqa foydalanuvchi roli boshqa oynaga to'g'ridan-to'g'ri o'tganda "Kirish Cheklangan" ekrani chiqishi va ruxsat berilmasligi.
+- **FR-6.2**: Navbar menyusida faqat amaldagi rolga ruxsat etilgan bo'limlar ko'rinishi.
+- **FR-6.3**: Saytdagi ortiqcha uzun byurokratik matnlar va xakaton yozuvlarini qisqartirish, zamonaviy, ixcham va aniq (less wordy) SaaS ko'rinishiga keltirish.
+
 ## Non-Functional Requirements
 - **NFR-1 (Latency)**: Ovozli javob kechikishi 1.5 - 2.5 soniyadan oshmasligi kerak.
 - **NFR-2 (Design)**: O'zbekiston Respublikasi davlat standartlariga mos, zamonaviy, ishonchli vizual dizayn (Gerb/Bayroq elementlari, ko'k-zumrad hukumat tuslari, toza tipografika).
 - **NFR-3 (Offline/Fallback Resilience)**: Hackathon sahnasida internet sekinlashganda ham demo 100% to'xtab qolmasligi uchun avtomatik zaxira tizimi (local speech synthesis & knowledge fallback).
-- **NFR-4 (Security)**: Xavfsiz WebSocket ulanish, maxfiy kalitlarni `.env` da saqlash, foydalanuvchi ma'lumotlarini tozalash (input sanitization).
+- **NFR-4 (Security)**: Xavfsiz WebSocket ulanish, maxfiy kalitlarni `.env` da saqlash, foydalanuvchi ma'lumotlarini tozalash (input sanitization), rolga asoslangan sahifa izolyatsiyasi.
 
 ## Acceptance Criteria
 - Hakamlar oldida fuqaro sifatida savol berilganda: audio to'lqin ko'rinishi, o'zbekcha transkripsiya, aniq hukumat nizomiga asoslangan javob va o'zbekcha ovoz yangrashi.
 - Operator panelida qo'ng'iroq o'z vaqtida paydo bo'lishi va tahlil qilinishi.
+- Fuqaro operator yoki admin sahifasini ocha olmasligi, operator ham fuqaro yoki admin sahifasiga aralashmasligi.
 - Barcha sahifalar xatosiz ishlashi va testlardan o'tishi.

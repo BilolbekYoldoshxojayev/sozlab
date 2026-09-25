@@ -245,7 +245,7 @@ export default function OperatorQueue() {
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Ta&apos;lim va Innovatsiyalar Vazirligi Call-Markazi • Faol muloqotlar: <strong className="text-white">{myActiveCallsCount}</strong> ta
+                Operator ishchi o&apos;rni • Faol muloqotlar: <strong className="text-white">{myActiveCallsCount}</strong> ta
               </p>
             </div>
           </div>
@@ -298,7 +298,7 @@ export default function OperatorQueue() {
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm sm:text-base font-extrabold text-white">
-                    Navbatdagi fuqaro 3 soniyada ulanadi ({autoConnect.remainingSeconds}.. {autoConnect.remainingSeconds > 1 ? autoConnect.remainingSeconds - 1 + '.. ' : ''}1..)
+                    Navbatdagi fuqaroga ulanish ({autoConnect.remainingSeconds} soniya)
                   </span>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-slate-950">
                     FIFO Avto-Ulanish
@@ -319,7 +319,7 @@ export default function OperatorQueue() {
                 className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-xs shadow-lg shadow-emerald-600/30 transition-all active:scale-95"
               >
                 <Zap className="w-4 h-4" />
-                <span>Zudlik bilan boshlash</span>
+                <span>Hozir ulanish</span>
               </button>
 
               <button
@@ -327,7 +327,7 @@ export default function OperatorQueue() {
                 className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-semibold text-xs transition-all active:scale-95"
               >
                 <Pause className="w-3.5 h-3.5" />
-                <span>Tanaffus / Bekor</span>
+                <span>Kutish</span>
               </button>
             </div>
           </div>
@@ -351,11 +351,8 @@ export default function OperatorQueue() {
             </div>
             <div>
               <h4 className="font-bold text-sm text-amber-900">
-                Operator Diqqatiga: {waitingCount} ta fuqaro jonli navbatda kutmoqda!
+                Navbatda {waitingCount} ta fuqaro kutmoqda. Murojaatlar qabul qilinishga tayyor.
               </h4>
-              <p className="text-xs text-amber-700">
-                AI murakkab yoki shikoyat arizalarini zudlik bilan inson-operator ko&apos;rigiga yo&apos;naltirdi.
-              </p>
             </div>
           </div>
           <button
@@ -624,7 +621,7 @@ export default function OperatorQueue() {
                 <div className="flex items-center gap-2 text-xs text-slate-300">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                   <span>
-                    <strong>Zero-Chatbot:</strong> Matnli chat olib tashlangan. Barcha muloqot to&apos;liq jonli ovoz (100vh WebRTC) orqali amalga oshiriladi.
+                    <strong>Jonli Aloqa:</strong> Muloqot to&apos;g&apos;ridan-to&apos;g&apos;ri audio aloqa orqali olib boriladi.
                   </span>
                 </div>
 
@@ -635,7 +632,7 @@ export default function OperatorQueue() {
                       className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg flex items-center gap-2 active:scale-95 transition-all"
                     >
                       <Headset className="w-4 h-4" />
-                      <span>Jonli Ovozli Muloqotni Boshlash (100vh)</span>
+                      <span>Ovozli Muloqotni Boshlash</span>
                     </button>
                     <button
                       onClick={() => handleCompleteCall(selectedCall.id)}

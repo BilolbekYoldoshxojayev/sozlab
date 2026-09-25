@@ -1,18 +1,102 @@
+"""
+Text-to-Speech (TTS) Service with Dual-AI Fallback Engine:
+Primary: Aisha AI (Gulnoza model, WAV format)
+Fallback: Microsoft Edge-TTS (uz-UZ-MadinaNeural / uz-UZ-SardorNeural, MP3 format)
+Resilience: In-memory Circuit Breaker (CLOSED, OPEN, HALF_OPEN) & MD5 disk cache
+"""
 import hashlib
+import logging
 import os
-import asyncio
+import time
 from pathlib import Path
 from typing import Optional, Tuple
 import edge_tts
 from app.core.config import settings
+from app.services.aisha_service import aisha_service, AishaAPIException
+
+logger = logging.getLogger(__name__)
+
+
+class CircuitBreakerState:
+    CLOSED = "CLOSED"       # Normal: All traffic routes to Aisha AI
+    OPEN = "OPEN"           # Failing: Traffic bypasses Aisha AI, routes directly to Edge-TTS
+    HALF_OPEN = "HALF_OPEN" # Cooldown passed: One trial probe allowed to test Aisha AI
+
+
+class CircuitBreaker:
+    """In-memory Circuit Breaker to protect against external API failures."""
+
+    def __init__(self, failure_threshold: int = 3, cooldown_seconds: float = 60.0):
+        self.failure_threshold = failure_threshold
+        self.cooldown_seconds = cooldown_seconds
+        self.failure_count = 0
+        self.last_failure_time = 0.0
+        self.state = CircuitBreakerState.CLOSED
+
+    def can_attempt(self) -> bool:
+        if self.state == CircuitBreakerState.CLOSED:
+            return True
+        if self.state == CircuitBreakerState.OPEN:
+            if time.time() - self.last_failure_time >= self.cooldown_seconds:
+                self.state = CircuitBreakerState.HALF_OPEN
+                logger.info("[Circuit Breaker] Cooldown elapsed. Transitioned to HALF_OPEN (probing Aisha AI).")
+                return True
+            return False
+        # HALF_OPEN allows probe
+        return True
+
+    def record_success(self):
+        if self.state != CircuitBreakerState.CLOSED:
+            logger.info("[Circuit Breaker] Call succeeded. Resetting state to CLOSED.")
+        self.failure_count = 0
+        self.state = CircuitBreakerState.CLOSED
+
+    def record_failure(self):
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+        if self.state == CircuitBreakerState.CLOSED:
+            if self.failure_count >= self.failure_threshold:
+                self.state = CircuitBreakerState.OPEN
+                logger.warning(
+                    f"[Circuit Breaker] Failure threshold reached ({self.failure_count}/{self.failure_threshold}). "
+                    f"Tripping to OPEN for {self.cooldown_seconds}s. Bypassing to Edge-TTS fallback."
+                )
+        elif self.state == CircuitBreakerState.HALF_OPEN:
+            self.state = CircuitBreakerState.OPEN
+            logger.warning("[Circuit Breaker] Half-open probe failed. Returning to OPEN state.")
+
+    def reset(self):
+        self.failure_count = 0
+        self.last_failure_time = 0.0
+        self.state = CircuitBreakerState.CLOSED
+
 
 class TTSService:
+    """Dual-AI TTS Service with disk-based MD5 caching and circuit breaker."""
+
     def __init__(self):
         self.cache_dir: Path = settings.AUDIO_CACHE_DIR
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self.default_voice: str = settings.DEFAULT_TTS_VOICE
+        self.default_edge_voice: str = settings.DEFAULT_TTS_VOICE
+        self.breaker = CircuitBreaker(
+            failure_threshold=settings.AISHA_CIRCUIT_BREAKER_FAILURES,
+            cooldown_seconds=settings.AISHA_CIRCUIT_BREAKER_COOLDOWN,
+        )
 
-    def _get_cache_filename(self, text: str, voice: str, rate: str, pitch: str) -> str:
+    def _get_cache_filename(
+        self,
+        text: str,
+        provider: str,
+        voice_or_model: str,
+        rate_or_speed: str = "1.0",
+        pitch: str = "+0Hz",
+    ) -> str:
+        key = f"{provider}_{voice_or_model}_{text}_{rate_or_speed}_{pitch}"
+        file_hash = hashlib.md5(key.encode("utf-8")).hexdigest()
+        ext = "wav" if provider == "aisha" else "mp3"
+        return f"{file_hash}.{ext}"
+
+    def _get_legacy_edge_filename(self, text: str, voice: str, rate: str, pitch: str) -> str:
         key = f"{text}_{voice}_{rate}_{pitch}"
         file_hash = hashlib.md5(key.encode("utf-8")).hexdigest()
         return f"{file_hash}.mp3"
@@ -22,62 +106,102 @@ class TTSService:
         text: str,
         voice: Optional[str] = None,
         rate: str = "+0%",
-        pitch: str = "+0Hz"
+        pitch: str = "+0Hz",
+        prefer_aisha: bool = True,
     ) -> Tuple[str, float, bool]:
         """
-        Synthesizes Uzbek text using edge-tts.
+        Prioritizes Aisha AI Gulnoza TTS, with seamless fallback to Edge-TTS (uz-UZ-MadinaNeural).
         Returns: (audio_url_path, duration_estimate_seconds, was_cached)
         """
-        clean_text = text.strip()
+        clean_text = text.strip() if text else ""
         if not clean_text:
             clean_text = "Eshitaman, savolingizni bering."
 
-        selected_voice = voice or self.default_voice
-        if selected_voice not in ["uz-UZ-MadinaNeural", "uz-UZ-SardorNeural"]:
-            selected_voice = "uz-UZ-MadinaNeural"
-
-        filename = self._get_cache_filename(clean_text, selected_voice, rate, pitch)
-        file_path = self.cache_dir / filename
-
-        # Estimated duration in seconds (average ~13-15 chars per second for Uzbek speech)
+        # Duration estimate (~13-15 chars per second for spoken Uzbek)
         duration_estimate = max(1.0, round(len(clean_text) / 14.0, 2))
 
-        # Check cache
-        if file_path.exists() and file_path.stat().st_size > 1024:
-            return f"/api/audio/{filename}", duration_estimate, True
+        # Target identifiers
+        aisha_model = settings.AISHA_TTS_MODEL
+        aisha_speed = str(settings.AISHA_TTS_SPEED)
+        aisha_filename = self._get_cache_filename(clean_text, "aisha", aisha_model, aisha_speed, pitch="+0Hz")
+        aisha_filepath = self.cache_dir / aisha_filename
 
-        # Synthesize with edge-tts
+        selected_edge_voice = voice or self.default_edge_voice
+        if selected_edge_voice not in ["uz-UZ-MadinaNeural", "uz-UZ-SardorNeural"]:
+            selected_edge_voice = "uz-UZ-MadinaNeural"
+
+        edge_filename = self._get_cache_filename(clean_text, "edge", selected_edge_voice, rate, pitch)
+        edge_filepath = self.cache_dir / edge_filename
+        legacy_edge_filename = self._get_legacy_edge_filename(clean_text, selected_edge_voice, rate, pitch)
+        legacy_edge_filepath = self.cache_dir / legacy_edge_filename
+
+        # 1. Check disk cache
+        if prefer_aisha and aisha_filepath.exists() and aisha_filepath.stat().st_size > 100:
+            return f"/api/audio/{aisha_filename}", duration_estimate, True
+
+        if edge_filepath.exists() and edge_filepath.stat().st_size > 100:
+            if not prefer_aisha or not self.breaker.can_attempt() or self.breaker.failure_count > 0:
+                return f"/api/audio/{edge_filename}", duration_estimate, True
+
+        if legacy_edge_filepath.exists() and legacy_edge_filepath.stat().st_size > 100:
+            if not prefer_aisha or not self.breaker.can_attempt() or self.breaker.failure_count > 0:
+                return f"/api/audio/{legacy_edge_filename}", duration_estimate, True
+
+        # 2. Primary: Aisha AI (Gulnoza)
+        if prefer_aisha and self.breaker.can_attempt():
+            try:
+                audio_bytes = await aisha_service.tts_synthesize(
+                    transcript=clean_text,
+                    model=aisha_model,
+                    speed=settings.AISHA_TTS_SPEED,
+                )
+                if audio_bytes and len(audio_bytes) > 100:
+                    tmp_path = self.cache_dir / f"tmp_{aisha_filename}"
+                    tmp_path.write_bytes(audio_bytes)
+                    tmp_path.replace(aisha_filepath)
+                    self.breaker.record_success()
+                    return f"/api/audio/{aisha_filename}", duration_estimate, False
+                else:
+                    raise AishaAPIException("Empty audio returned by Aisha AI", status_code=502)
+            except Exception as e:
+                self.breaker.record_failure()
+                logger.warning(
+                    f"[Dual-AI TTS Fallback] Aisha AI TTS unavailable ({e}). "
+                    f"Breaker: {self.breaker.state} (failures={self.breaker.failure_count}). "
+                    f"Falling back to Edge-TTS ({selected_edge_voice})."
+                )
+
+        # 3. Resilient Fallback: Edge-TTS (uz-UZ-MadinaNeural)
+        if edge_filepath.exists() and edge_filepath.stat().st_size > 100:
+            return f"/api/audio/{edge_filename}", duration_estimate, True
+
         try:
             communicate = edge_tts.Communicate(
                 clean_text,
-                selected_voice,
+                selected_edge_voice,
                 rate=rate,
-                pitch=pitch
+                pitch=pitch,
             )
-            
-            # Write to temporary file then atomically replace to avoid half-written reads
-            tmp_path = self.cache_dir / f"tmp_{filename}"
+            tmp_path = self.cache_dir / f"tmp_{edge_filename}"
             await communicate.save(str(tmp_path))
-            
             if tmp_path.exists() and tmp_path.stat().st_size > 0:
-                tmp_path.replace(file_path)
-            
-            return f"/api/audio/{filename}", duration_estimate, False
-            
+                tmp_path.replace(edge_filepath)
+            return f"/api/audio/{edge_filename}", duration_estimate, False
         except Exception as e:
-            print(f"[TTS Error] Generation failed for '{clean_text[:30]}...': {e}")
-            # If network error or failure occurs, check if file exists anyway or return empty fallback
-            if file_path.exists():
-                return f"/api/audio/{filename}", duration_estimate, True
+            logger.error(f"[TTS Critical Error] Both Aisha AI and Edge-TTS failed: {e}")
+            if edge_filepath.exists():
+                return f"/api/audio/{edge_filename}", duration_estimate, True
+            if legacy_edge_filepath.exists():
+                return f"/api/audio/{legacy_edge_filename}", duration_estimate, True
             raise e
 
     def get_audio_filepath(self, filename: str) -> Optional[Path]:
         """Returns safe path to audio file if exists within cache directory."""
-        # Prevent directory traversal
         safe_name = os.path.basename(filename)
         path = self.cache_dir / safe_name
         if path.exists() and path.is_file():
             return path
         return None
+
 
 tts_service = TTSService()

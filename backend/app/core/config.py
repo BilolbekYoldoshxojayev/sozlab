@@ -22,6 +22,16 @@ class Settings:
     DEFAULT_TTS_VOICE: str = os.getenv("DEFAULT_TTS_VOICE", "uz-UZ-MadinaNeural")
     AUDIO_CACHE_DIR: Path = Path(os.getenv("AUDIO_CACHE_DIR", "./cache/audio")).resolve()
     
+    # Aisha AI Speech Integration
+    AISHA_BASE_URL: str = os.getenv("AISHA_BASE_URL", "https://back.aisha.group")
+    AISHA_API_KEY: str = os.getenv("AISHA_API_KEY", "vlk_Iyeis6LM8pFCI0aMVTbeXUeJqpL_3GMhgAXmMLMAwpI")
+    AISHA_TTS_MODEL: str = os.getenv("AISHA_TTS_MODEL", "Gulnoza")
+    AISHA_TTS_MOOD: str = os.getenv("AISHA_TTS_MOOD", "Neutral")
+    AISHA_TTS_SPEED: float = float(os.getenv("AISHA_TTS_SPEED", "1.0"))
+    AISHA_TIMEOUT_SECONDS: float = float(os.getenv("AISHA_TIMEOUT_SECONDS", "6.0"))
+    AISHA_CIRCUIT_BREAKER_FAILURES: int = int(os.getenv("AISHA_CIRCUIT_BREAKER_FAILURES", "3"))
+    AISHA_CIRCUIT_BREAKER_COOLDOWN: float = float(os.getenv("AISHA_CIRCUIT_BREAKER_COOLDOWN", "60.0"))
+    
     # Ministry details
     MINISTRY_NAME: str = "O'zbekiston Respublikasi Oliy ta'lim, fan va innovatsiyalar vazirligi"
     HOTLINE_NUMBER: str = "1006"

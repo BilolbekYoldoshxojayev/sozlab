@@ -9,6 +9,12 @@
 ## REVIEW
 
 ## DONE
+- [x] Task 7.1: Backend - Integrate Aisha AI service (`aisha_service.py`), configure environment with user API key, and wire prioritized dual-AI TTS fallback in `tts_service.py`
+- [x] Task 7.2: Backend - Add unit tests in `tests/test_aisha_service.py` verifying Aisha TTS/STT and edge-tts fallback resilience
+- [x] Task 7.3: Frontend - Create `RoleProtectedPage.tsx` route guard and wrap `/operator`, `/admin`, `/call`, `/analytics`, `/history`
+- [x] Task 7.4: Frontend - Dynamically filter navigation links in `Navbar.tsx` based on active user role
+- [x] Task 7.5: Frontend - Overhaul copy across `app/page.tsx`, `CallSimulator.tsx`, `OperatorQueue.tsx`, and `app/admin/page.tsx` into punchy, concise enterprise copy
+- [x] Task 7.6: Verification - Run full pytest suite (51/51 passed) and Next.js production build (`npm run build`)
 - [x] Task 1.1: Scaffolding, CORS, schemas, and initial Knowledge Base
 - [x] Task 1.2: Uzbek TTS engine (`edge-tts` with Madina/Sardor voices)
 - [x] Task 1.3: Gemini Dialog Manager baseline
