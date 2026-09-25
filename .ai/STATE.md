@@ -26,9 +26,10 @@ Milestone 7 has been fully implemented, verified, and delivered to production:
    - Automatic archiving on call completion (`complete_call`) with full transcript turns, duration, sentiment, and AI summary.
 
 ## Verification & Audit Results
-- **Backend Tests (`python -m pytest backend/tests/ -v`)**: 43/43 tests PASSED (100% green, 0 failures).
+- **Backend Tests (`python -m pytest backend/tests/ -v`)**: 84/84 tests PASSED (100% green, 0 failures across core, Aisha integration, and adversarial stress suites).
+- **Frontend Verification**: 100% passed `scripts/test-adversarial-roles.mjs` matrix.
 - **Frontend Production Build (`npm run build`)**: Exit code 0, 9/9 static routes compiled cleanly, 0 TypeScript/ESLint errors.
-- **GitHub Sync**: All milestones committed with Conventional Commits and pushed to `origin/main`.
+- **GitHub Sync**: All milestones committed with Conventional Commits and pushed to `origin/main` (latest commit `61a93fc`).
 
 ## Key Files
 - Backend routes & services:
