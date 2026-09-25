@@ -313,4 +313,64 @@ class AIDialogManager:
         dialog_res = await self.process_user_turn(call_id, transcribed_text)
         return transcribed_text, dialog_res
 
+    async def transcribe_live_audio_chunk(
+        self,
+        audio_bytes: bytes,
+        mime_type: str = "audio/webm",
+        speaker_role: str = "citizen"
+    ) -> str:
+        """
+        Fast live transcription for real-time captions (Fuqaro / Operator).
+        """
+        if not audio_bytes or len(audio_bytes) < 200:
+            return ""
+
+        client = self._get_client()
+        clean_mime = mime_type.split(";")[0].strip().lower() if mime_type else "audio/webm"
+
+        if client and settings.GEMINI_API_KEY:
+            try:
+                from google.genai import types
+                audio_part = types.Part.from_bytes(data=audio_bytes, mime_type=clean_mime)
+                prompt = (
+                    "Ushbu qisqa audio o'zbek tilidagi jonli muloqotdan olingan. "
+                    "Unda aytilgan gapni aniq o'zbek tilida transkripsiya qilib bering (faqat matn, izohsiz)."
+                )
+                res = client.models.generate_content(
+                    model=self.PRIMARY_MODEL,
+                    contents=[audio_part, prompt]
+                )
+                if res and res.text:
+                    return res.text.strip().replace('"', '').replace("'", "")
+            except Exception as e:
+                print(f"[Live STT Error]: {e}")
+
+        return ""
+
+    async def generate_call_summary(self, dialog_history: List[str]) -> str:
+        """
+        Generate concise analytical summary of human-to-human call.
+        """
+        if not dialog_history:
+            return "Fuqaro va operator o'rtasida jonli ovozli muloqot o'tkazildi."
+
+        client = self._get_client()
+        if client and settings.GEMINI_API_KEY:
+            try:
+                prompt = (
+                    "Quyidagi operator va fuqaro o'rtasidagi suhbatni 1-2 jumla bilan "
+                    "o'zbek tilida umumlashtiring (asosiy mavzu va xulosa):\n\n"
+                    + "\n".join(dialog_history)
+                )
+                res = client.models.generate_content(
+                    model=self.PRIMARY_MODEL,
+                    contents=prompt
+                )
+                if res and res.text:
+                    return res.text.strip()
+            except Exception as e:
+                print(f"[Call Summary Error]: {e}")
+
+        return "Operator tomonidan fuqaro murojaati to'liq o'rganildi va maslahat berildi."
+
 dialog_manager = AIDialogManager()

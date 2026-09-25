@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Tuple, Any
@@ -365,7 +366,33 @@ class CallManager:
                     )
                     next_call.messages.append(sys_msg)
 
+        # Trigger Supabase archiving
+        try:
+            from app.services.supabase_service import supabase_service
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(supabase_service.archive_call_record(call))
+            except RuntimeError:
+                pass
+        except Exception:
+            pass
+
         return call, next_call
+
+    def add_live_transcript_turn(self, call_id: str, role: SpeakerRole, speaker_name: str, text: str) -> Optional[MessageSchema]:
+        """Record real-time live caption dialog turn during human-to-human call."""
+        call = self.get_call(call_id)
+        if not call:
+            return None
+        msg = MessageSchema(
+            id=f"live-{uuid.uuid4().hex[:6]}",
+            role=role,
+            text=text,
+            timestamp=utc_now()
+        )
+        call.messages.append(msg)
+        call.duration_seconds = int((datetime.now(timezone.utc) - call.started_at).total_seconds())
+        return msg
 
     def get_analytics(self) -> AnalyticsSummary:
         calls = list(self._calls.values())

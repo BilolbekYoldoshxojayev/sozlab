@@ -26,6 +26,11 @@ class Settings:
     MINISTRY_NAME: str = "O'zbekiston Respublikasi Oliy ta'lim, fan va innovatsiyalar vazirligi"
     HOTLINE_NUMBER: str = "1006"
 
+    # Supabase Database
+    SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
+    SUPABASE_KEY: str = os.getenv("SUPABASE_KEY", "") or os.getenv("SUPABASE_ANON_KEY", "")
+    SUPABASE_SERVICE_ROLE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or SUPABASE_KEY
+
 settings = Settings()
 
 # Ensure cache directory exists

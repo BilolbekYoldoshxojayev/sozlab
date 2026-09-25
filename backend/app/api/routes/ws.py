@@ -94,9 +94,11 @@ class ConnectionManager:
             except Exception:
                 pass
 
-    async def broadcast_to_call(self, call_id: str, data: dict):
+    async def broadcast_to_call(self, call_id: str, data: dict, exclude: Optional[WebSocket] = None):
         if call_id in self.active_connections:
             for connection in list(self.active_connections[call_id]):
+                if exclude and connection == exclude:
+                    continue
                 try:
                     await connection.send_json(data)
                 except Exception:
@@ -276,6 +278,7 @@ async def call_websocket_endpoint(websocket: WebSocket, call_id: str):
                         "type": "operator_assigned",
                         "call_id": call_id,
                         "operator_name": assigned_op.name,
+                        "mode": "live_call",
                         "message": f"Siz navbatchi operator {assigned_op.name}ga ulandingiz."
                     })
                 else:
@@ -290,6 +293,94 @@ async def call_websocket_endpoint(websocket: WebSocket, call_id: str):
                     "type": "call_updated",
                     "call": updated_call.model_dump(mode="json"),
                     "operators": [op.model_dump(mode="json") for op in call_manager.get_all_operators()]
+                })
+
+            elif msg_type == "webrtc_offer":
+                await ws_manager.broadcast_to_call(call_id, {
+                    "type": "webrtc_offer",
+                    "call_id": call_id,
+                    "sdp": payload.get("sdp"),
+                    "sender_role": payload.get("sender_role", "unknown")
+                }, exclude=websocket)
+
+            elif msg_type == "webrtc_answer":
+                await ws_manager.broadcast_to_call(call_id, {
+                    "type": "webrtc_answer",
+                    "call_id": call_id,
+                    "sdp": payload.get("sdp"),
+                    "sender_role": payload.get("sender_role", "unknown")
+                }, exclude=websocket)
+
+            elif msg_type == "webrtc_ice_candidate":
+                await ws_manager.broadcast_to_call(call_id, {
+                    "type": "webrtc_ice_candidate",
+                    "call_id": call_id,
+                    "candidate": payload.get("candidate"),
+                    "sender_role": payload.get("sender_role", "unknown")
+                }, exclude=websocket)
+
+            elif msg_type == "peer_audio_chunk":
+                audio_data = payload.get("audio")
+                sender_role = payload.get("sender_role", "unknown")
+                await ws_manager.broadcast_to_call(call_id, {
+                    "type": "peer_audio_chunk",
+                    "call_id": call_id,
+                    "audio": audio_data,
+                    "sender_role": sender_role
+                }, exclude=websocket)
+                await ws_manager.broadcast_to_admin_listeners(call_id, {
+                    "type": "ghost_audio_chunk",
+                    "call_id": call_id,
+                    "audio": audio_data,
+                    "role": sender_role
+                })
+
+            elif msg_type == "live_caption":
+                speaker_role_str = payload.get("speaker_role", "citizen")
+                role_enum = SpeakerRole.OPERATOR if speaker_role_str.lower() == "operator" else SpeakerRole.CITIZEN
+                speaker_name = payload.get("speaker_name", ("Operator" if role_enum == SpeakerRole.OPERATOR else "Fuqaro"))
+                caption_text = payload.get("text", "").strip()
+                if caption_text:
+                    call_manager.add_live_transcript_turn(call_id, role_enum, speaker_name, caption_text)
+                    await ws_manager.broadcast_to_call(call_id, {
+                        "type": "live_caption",
+                        "call_id": call_id,
+                        "speaker_role": speaker_role_str,
+                        "speaker_name": speaker_name,
+                        "text": caption_text
+                    })
+                    await ws_manager.broadcast_to_admin_listeners(call_id, {
+                        "type": "ghost_message",
+                        "call_id": call_id,
+                        "role": speaker_role_str,
+                        "text": caption_text,
+                        "timestamp": str(call_manager.get_call(call_id).duration_seconds if call_manager.get_call(call_id) else 0)
+                    })
+
+            elif msg_type == "end_call":
+                summary = payload.get("summary", "Jonli ovozli muloqot yakunlandi.")
+                completed_call, next_call = call_manager.complete_call(call_id, summary=summary)
+                await ws_manager.broadcast_to_call(call_id, {
+                    "type": "call_completed",
+                    "summary": summary
+                })
+                await ws_manager.broadcast_to_admin_listeners(call_id, {
+                    "type": "ghost_call_status",
+                    "call_id": call_id,
+                    "status": "completed",
+                    "summary": summary
+                })
+                await ws_manager.broadcast_to_operators({
+                    "type": "call_completed",
+                    "call_id": call_id,
+                    "calls": [c.model_dump(mode="json") for c in call_manager.get_all_calls()],
+                    "operators": [o.model_dump(mode="json") for o in call_manager.get_all_operators()]
+                })
+                await ws_manager.broadcast_to_admins({
+                    "type": "call_completed",
+                    "call_id": call_id,
+                    "calls": [c.model_dump(mode="json") for c in call_manager.get_all_calls()],
+                    "operators": [o.model_dump(mode="json") for o in call_manager.get_all_operators()]
                 })
 
     except WebSocketDisconnect:
@@ -346,7 +437,9 @@ async def operator_websocket_endpoint(
                 updated_call = call_manager.get_call(call_id)
                 await ws_manager.broadcast_to_call(call_id, {
                     "type": "operator_joined",
-                    "operator_name": op_name
+                    "operator_name": op_name,
+                    "mode": "live_call",
+                    "call_id": call_id
                 })
                 await ws_manager.broadcast_to_operators({
                     "type": "call_updated",
@@ -355,6 +448,64 @@ async def operator_websocket_endpoint(
                 })
                 # Re-broadcast queue updates if someone was dequeued
                 await ws_manager.broadcast_queue_updates()
+
+            elif action == "webrtc_offer" and call_id:
+                await ws_manager.broadcast_to_call(call_id, {
+                    "type": "webrtc_offer",
+                    "call_id": call_id,
+                    "sdp": data.get("sdp"),
+                    "sender_role": "operator"
+                }, exclude=websocket)
+
+            elif action == "webrtc_answer" and call_id:
+                await ws_manager.broadcast_to_call(call_id, {
+                    "type": "webrtc_answer",
+                    "call_id": call_id,
+                    "sdp": data.get("sdp"),
+                    "sender_role": "operator"
+                }, exclude=websocket)
+
+            elif action == "webrtc_ice_candidate" and call_id:
+                await ws_manager.broadcast_to_call(call_id, {
+                    "type": "webrtc_ice_candidate",
+                    "call_id": call_id,
+                    "candidate": data.get("candidate"),
+                    "sender_role": "operator"
+                }, exclude=websocket)
+
+            elif action == "peer_audio_chunk" and call_id:
+                audio_data = data.get("audio")
+                await ws_manager.broadcast_to_call(call_id, {
+                    "type": "peer_audio_chunk",
+                    "call_id": call_id,
+                    "audio": audio_data,
+                    "sender_role": "operator"
+                }, exclude=websocket)
+                await ws_manager.broadcast_to_admin_listeners(call_id, {
+                    "type": "ghost_audio_chunk",
+                    "call_id": call_id,
+                    "audio": audio_data,
+                    "role": "operator"
+                })
+
+            elif action == "live_caption" and call_id:
+                caption_text = data.get("text", "").strip()
+                if caption_text:
+                    call_manager.add_live_transcript_turn(call_id, SpeakerRole.OPERATOR, op_name, caption_text)
+                    await ws_manager.broadcast_to_call(call_id, {
+                        "type": "live_caption",
+                        "call_id": call_id,
+                        "speaker_role": "operator",
+                        "speaker_name": op_name,
+                        "text": caption_text
+                    })
+                    await ws_manager.broadcast_to_admin_listeners(call_id, {
+                        "type": "ghost_message",
+                        "call_id": call_id,
+                        "role": "operator",
+                        "text": caption_text,
+                        "timestamp": str(call_manager.get_call(call_id).duration_seconds if call_manager.get_call(call_id) else 0)
+                    })
 
             elif action == "complete" and call_id:
                 summary = data.get("summary", "Operator tomonidan muammo hal etildi.")

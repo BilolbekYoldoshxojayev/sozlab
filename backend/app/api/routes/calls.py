@@ -421,6 +421,14 @@ async def complete_call(
         "calls": [c.model_dump(mode="json") for c in call_manager.get_all_calls()],
         "operators": [o.model_dump(mode="json") for o in call_manager.get_all_operators()]
     })
+
+    # Await Supabase archiving
+    try:
+        from app.services.supabase_service import supabase_service
+        await supabase_service.archive_call_record(call)
+    except Exception as e:
+        pass
+
     return {
         "completed_call": call,
         "next_assigned_call": next_call
