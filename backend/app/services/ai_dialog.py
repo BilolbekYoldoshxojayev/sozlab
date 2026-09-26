@@ -8,7 +8,7 @@ Strict Guardrail: Zero speculation outside education laws. Zero operator handove
 
 import json
 import re
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional
 from app.core.config import settings
 from app.models.schemas import SentimentType, TopicCategory, DialogTurnResponse
 from app.services.knowledge_base import (

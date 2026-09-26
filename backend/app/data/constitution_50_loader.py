@@ -15,10 +15,12 @@ logger = logging.getLogger(__name__)
 
 def _resolve_json_path() -> Optional[Path]:
     candidates = [
-        Path("c:/dev/Projects/vazir-chat/Ozbekiston_Konstitutsiyasi_Talim_Moddalari_50_Sahifa.json"),
-        Path(__file__).parents[3] / "Ozbekiston_Konstitutsiyasi_Talim_Moddalari_50_Sahifa.json",
+        Path(__file__).parent / "Ozbekiston_Konstitutsiyasi_Talim_Moddalari_50_Sahifa.json",
         Path(__file__).parents[2] / "Ozbekiston_Konstitutsiyasi_Talim_Moddalari_50_Sahifa.json",
+        Path(__file__).parents[3] / "Ozbekiston_Konstitutsiyasi_Talim_Moddalari_50_Sahifa.json",
         Path.cwd() / "Ozbekiston_Konstitutsiyasi_Talim_Moddalari_50_Sahifa.json",
+        Path.cwd() / "backend" / "app" / "data" / "Ozbekiston_Konstitutsiyasi_Talim_Moddalari_50_Sahifa.json",
+        Path("c:/dev/Projects/vazir-chat/Ozbekiston_Konstitutsiyasi_Talim_Moddalari_50_Sahifa.json"),
     ]
     for p in candidates:
         if p.exists():
