@@ -161,7 +161,34 @@ export function getAdminWebSocketUrl(): string {
 }
 
 export function getAudioFullUrl(path: string): string {
-  if (path.startsWith('http://') || path.startsWith('https://')) return path;
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:audio/') || path.startsWith('blob:')) {
+    return path;
+  }
   return `${getApiBase()}${path}`;
 }
+
+
+
+export async function sendChatMessage(
+  message: string,
+  history?: Array<{ role: string; content: string }>
+): Promise<import('./types').ChatMessageResponse> {
+  const res = await fetch(`${getApiBase()}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, history }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Xatolik yuz berdi' }));
+    throw new Error(err.detail || 'Xabarni yuborib bo\'lmadi');
+  }
+  return res.json();
+}
+
+export async function fetchHumanVsAiMetrics(): Promise<import('./types').HumanVsAiMetricsResponse> {
+  const res = await fetch(`${getApiBase()}/api/analytics/human-vs-ai`, { cache: 'no-store' });
+  if (!res.ok) throw new Error('Qiyosiy ko\'rsatkichlar yuklanmadi');
+  return res.json();
+}
+
 

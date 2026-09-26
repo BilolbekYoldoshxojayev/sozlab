@@ -5,112 +5,116 @@ Manages calls, live transcript turns, durations, legal citations, and Supabase c
 """
 
 import asyncio
+import json
+import logging
+import os
+from pathlib import Path
 import uuid
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple, Any, Union
 from app.models.schemas import (
     CallRecord, CallStatus, SentimentType, TopicCategory,
     SpeakerRole, MessageSchema, AnalyticsSummary, utc_now
 )
 
+logger = logging.getLogger("sozlab.call_manager")
+
 class CallManager:
     def __init__(self):
+        import sys
+        if "pytest" in sys.modules or "PYTEST_CURRENT_TEST" in os.environ or os.environ.get("ENV") == "test":
+            self.saved_calls_dir = Path(__file__).resolve().parent.parent.parent / "data" / "test_saved_calls"
+        else:
+            self.saved_calls_dir = Path(__file__).resolve().parent.parent.parent / "data" / "saved_calls"
+        self.saved_calls_dir.mkdir(parents=True, exist_ok=True)
         self._calls: Dict[str, CallRecord] = {}
-        self._seed_initial_history()
+        
+        # Load persisted calls from disk (only in real runtime, never in test mode)
+        if "pytest" not in sys.modules and "PYTEST_CURRENT_TEST" not in os.environ and os.environ.get("ENV") != "test":
+            self.load_all_calls_from_disk()
 
-    def _seed_initial_history(self):
-        """Seed realistic ministry AI voice center history."""
-        now = datetime.now(timezone.utc)
+    def load_all_calls_from_disk(self) -> int:
+        """
+        Scans self.saved_calls_dir for all .json files and restores them into self._calls.
+        Returns the number of successfully loaded calls.
+        """
+        if not self.saved_calls_dir.exists():
+            return 0
+        loaded_count = 0
+        for fpath in self.saved_calls_dir.glob("*.json"):
+            if fpath.name.endswith(".tmp"):
+                continue
+            try:
+                content = fpath.read_text(encoding="utf-8")
+                data = json.loads(content)
+                record = CallRecord.model_validate(data)
+                record.messages = [
+                    m for m in record.messages
+                    if not (m.id == "init" or (m.role == SpeakerRole.AI and not m.audio_url and m.text == "Assalomu alaykum, eshitaman."))
+                ]
+                self._calls[record.id] = record
+                loaded_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to load call file {fpath.name}: {e}")
+        if loaded_count > 0:
+            logger.info(f"[CallManager] Loaded {loaded_count} persisted call records from {self.saved_calls_dir}")
+        return loaded_count
 
-        sample_calls = [
-            {
-                "id": "call-101",
-                "name": "Anvar Qodirov",
-                "phone": "+998 90 345-12-89",
-                "status": CallStatus.COMPLETED,
-                "topic": TopicCategory.QABUL,
-                "sentiment": SentimentType.POSITIVE,
-                "duration": 142,
-                "resolved_by_ai": True,
-                "summary": "1-sinfga qabul yoshi (7 yosh) va my.maktab.uz orqali mikrohudud qoidalari tushuntirildi.",
-                "messages": [
-                    MessageSchema(id="m1", role=SpeakerRole.CITIZEN, text="Assalomu alaykum, bolam 1-sinfga qachon qabul qilinadi?", timestamp=now - timedelta(minutes=45)),
-                    MessageSchema(id="m2", role=SpeakerRole.AI, text="Assalomu alaykum! 'Ta'lim to'g'risida'gi Qonunning 9-moddasiga ko'ra, bolalar ular 7 yoshga to'ladigan yilda 1-sinfga qabul qilinadi.", timestamp=now - timedelta(minutes=44)),
-                    MessageSchema(id="m3", role=SpeakerRole.CITIZEN, text="Maktabda darsliklar bepulmi yoki ijara to'lanadimi?", timestamp=now - timedelta(minutes=43)),
-                    MessageSchema(id="m4", role=SpeakerRole.AI, text="1-11-sinf o'quvchilari uchun barcha darsliklar va mashq daftarlari davlat budjetidan 100% bepul ta'minlanadi.", timestamp=now - timedelta(minutes=42)),
-                    MessageSchema(id="m5", role=SpeakerRole.CITIZEN, text="Katta rahmat, tushunarli bo'ldi!", timestamp=now - timedelta(minutes=41))
-                ]
-            },
-            {
-                "id": "call-102",
-                "name": "Dilnoza Rahimova",
-                "phone": "+998 93 456-78-90",
-                "status": CallStatus.COMPLETED,
-                "topic": TopicCategory.KONTRAKT,
-                "sentiment": SentimentType.POSITIVE,
-                "duration": 95,
-                "resolved_by_ai": True,
-                "summary": "VMQ-447 qaroriga ko'ra xotin-qizlar magistraturasi kontrakti 100% davlat budjetidan qoplanishi tushuntirildi.",
-                "messages": [
-                    MessageSchema(id="m6", role=SpeakerRole.CITIZEN, text="Magistraturada o'qiyman, ayollarga kontrakt davlat tomonidan to'lanadimi?", timestamp=now - timedelta(minutes=10)),
-                    MessageSchema(id="m7", role=SpeakerRole.AI, text="Ha, VMQ-447 qaroriga binoan davlat OTM magistratura bosqichidagi xotin-qizlarning to'lov-kontrakti davlat budjetidan 100% qaytarish shartisiz qoplab beriladi.", timestamp=now - timedelta(minutes=9)),
-                    MessageSchema(id="m8", role=SpeakerRole.CITIZEN, text="Rahmat, judayam quvondim!", timestamp=now - timedelta(minutes=8))
-                ]
-            },
-            {
-                "id": "call-103",
-                "name": "Bekzod Aliyev",
-                "phone": "+998 99 789-23-45",
-                "status": CallStatus.COMPLETED,
-                "topic": TopicCategory.GRANT,
-                "sentiment": SentimentType.POSITIVE,
-                "duration": 210,
-                "resolved_by_ai": True,
-                "summary": "PF-81 Farmoni asosida yangi grant tizimi va GPA bo'yicha yillik qayta taqsimlash qoidalari berildi.",
-                "messages": [
-                    MessageSchema(id="m9", role=SpeakerRole.CITIZEN, text="Davlat granti har yili qayta taqsimlanadimi? GPA ballim qanday bo'lishi kerak?", timestamp=now - timedelta(minutes=120)),
-                    MessageSchema(id="m10", role=SpeakerRole.AI, text="Prezidentning PF-81-son Farmoniga muvofiq, davlat grantlari 2-kursdan boshlab HEMIS tizimidagi GPA ko'rsatkichi eng yuqori bo'lgan a'lochi talabalar o'rtasida har yili qayta taqsimlanadi.", timestamp=now - timedelta(minutes=119))
-                ]
-            },
-            {
-                "id": "call-104",
-                "name": "Nargiza Karimova (O'qituvchi)",
-                "phone": "+998 97 111-22-33",
-                "status": CallStatus.COMPLETED,
-                "topic": TopicCategory.BOSHQA,
-                "sentiment": SentimentType.POSITIVE,
-                "duration": 180,
-                "resolved_by_ai": True,
-                "summary": "O'RQ-901 va Konstitutsiya 52-moddasi bo'yicha pedagoglarni majburiy mehnatga jalb etish qat'iyan taqiqlanganligi tushuntirildi.",
-                "messages": [
-                    MessageSchema(id="m11", role=SpeakerRole.CITIZEN, text="Maktab o'qituvchisini ko'cha tozalash va obodonlashtirishga majburlash mumkinmi?", timestamp=now - timedelta(minutes=25)),
-                    MessageSchema(id="m12", role=SpeakerRole.AI, text="Mutlaqo yo'q! Konstitutsiyaning 52-moddasi va 'Pedagogning maqomi to'g'risida'gi Qonunga binoan o'qituvchini majburiy mehnatga jalb qilish qat'iyan man etiladi. MJtK 51-moddasi bilan BHMning 100 dan 150 baravarigacha jarima belgilangan.", timestamp=now - timedelta(minutes=24))
-                ]
-            }
-        ]
+    def save_call_to_disk(self, call_or_id: Union[str, CallRecord]) -> bool:
+        """
+        Persists call record JSON atomically to self.saved_calls_dir/{call_id}.json.
+        Writes to .tmp file first, then atomic os.replace to prevent partial writes.
+        """
+        try:
+            if isinstance(call_or_id, CallRecord):
+                record = call_or_id
+                c_id = record.id
+                self._calls[c_id] = record
+            else:
+                c_id = str(call_or_id)
+                record = self._calls.get(c_id)
 
-        for c in sample_calls:
-            record = CallRecord(
-                id=c["id"],
-                citizen_name=c["name"],
-                citizen_phone=c["phone"],
-                status=c["status"],
-                started_at=now - timedelta(seconds=c["duration"] + 100),
-                ended_at=now if c["status"] == CallStatus.COMPLETED else None,
-                duration_seconds=c["duration"],
-                messages=c["messages"],
-                primary_topic=c["topic"],
-                overall_sentiment=c["sentiment"],
-                resolution_summary=c.get("summary"),
-                resolved_by_ai=True
-            )
-            self._calls[record.id] = record
+            if not record:
+                logger.warning(f"save_call_to_disk: Call {c_id} not found in memory.")
+                return False
+
+            self.saved_calls_dir.mkdir(parents=True, exist_ok=True)
+            target_path = self.saved_calls_dir / f"{c_id}.json"
+            tmp_path = self.saved_calls_dir / f"{c_id}.json.tmp"
+
+            payload = record.model_dump(mode="json")
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+
+            os.replace(tmp_path, target_path)
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to persist call {call_or_id} to disk: {e}")
+            return False
 
     def get_all_calls(self) -> List[CallRecord]:
         return sorted(self._calls.values(), key=lambda c: c.started_at, reverse=True)
 
     def get_call(self, call_id: str) -> Optional[CallRecord]:
-        return self._calls.get(call_id)
+        if call_id in self._calls:
+            return self._calls[call_id]
+
+        # Fallback disk lookup
+        fpath = self.saved_calls_dir / f"{call_id}.json"
+        if fpath.exists():
+            try:
+                content = fpath.read_text(encoding="utf-8")
+                data = json.loads(content)
+                record = CallRecord.model_validate(data)
+                record.messages = [
+                    m for m in record.messages
+                    if not (m.id == "init" or (m.role == SpeakerRole.AI and not m.audio_url and m.text == "Assalomu alaykum, eshitaman."))
+                ]
+                self._calls[record.id] = record
+                return record
+            except Exception as e:
+                logger.warning(f"Failed to load call from disk {call_id}: {e}")
+        return None
 
     def create_call(self, citizen_name: str = "Fuqaro", citizen_phone: str = "+998 90 000-00-00") -> CallRecord:
         call_id = f"call-{uuid.uuid4().hex[:8]}"
@@ -121,20 +125,10 @@ class CallManager:
             status=CallStatus.AI_HANDLING,
             started_at=utc_now(),
             resolved_by_ai=True,
-            messages=[
-                MessageSchema(
-                    id="init",
-                    role=SpeakerRole.AI,
-                    text=(
-                        "Assalomu alaykum! Oliy ta'lim, fan va innovatsiyalar vazirligi hamda "
-                        "Maktabgacha va maktab ta'limi vazirligining «SözLab» intellektual ovozli markazi eshitadi. "
-                        "Ta'lim qonunchiligi bo'yicha qanday savolingiz bor?"
-                    ),
-                    timestamp=utc_now()
-                )
-            ]
+            messages=[]
         )
         self._calls[call_id] = record
+        self.save_call_to_disk(record)
         return record
 
     def add_message(self, call_id: str, message: MessageSchema) -> Optional[CallRecord]:
@@ -146,7 +140,11 @@ class CallManager:
             call.primary_topic = message.detected_topic
         if message.sentiment:
             call.overall_sentiment = message.sentiment
+        if message.llm_provider_used:
+            call.llm_provider_used = message.llm_provider_used
+            call.last_llm_provider = message.llm_provider_used
         call.duration_seconds = int((datetime.now(timezone.utc) - call.started_at).total_seconds())
+        self.save_call_to_disk(call)
         return call
 
     def complete_call(self, call_id: str, summary: Optional[str] = None) -> Tuple[Optional[CallRecord], None]:
@@ -178,6 +176,7 @@ class CallManager:
         except Exception:
             pass
 
+        self.save_call_to_disk(call)
         return call, None
 
     def add_live_transcript_turn(self, call_id: str, role: SpeakerRole, speaker_name: str, text: str) -> Optional[MessageSchema]:
@@ -193,45 +192,54 @@ class CallManager:
         )
         call.messages.append(msg)
         call.duration_seconds = int((datetime.now(timezone.utc) - call.started_at).total_seconds())
+        self.save_call_to_disk(call)
         return msg
 
     def get_analytics(self) -> AnalyticsSummary:
         calls = list(self._calls.values())
         total = len(calls)
         durations = [c.duration_seconds for c in calls if c.duration_seconds > 0]
-        avg_dur = int(sum(durations) / max(1, len(durations))) if durations else 115
+        avg_dur = int(sum(durations) / len(durations)) if durations else 0
         active_count = sum(1 for c in calls if c.status == CallStatus.AI_HANDLING)
 
         topic_counts: Dict[str, int] = {}
         for c in calls:
-            top_name = c.primary_topic.value
+            top_name = c.primary_topic.value if hasattr(c.primary_topic, 'value') else str(c.primary_topic)
             topic_counts[top_name] = topic_counts.get(top_name, 0) + 1
 
         sentiment_counts: Dict[str, int] = {}
         for c in calls:
-            s_name = c.overall_sentiment.value
+            s_name = c.overall_sentiment.value if hasattr(c.overall_sentiment, 'value') else str(c.overall_sentiment)
             sentiment_counts[s_name] = sentiment_counts.get(s_name, 0) + 1
 
+        # Real satisfaction score computed from real calls
+        scores = [c.satisfaction_score for c in calls if getattr(c, 'satisfaction_score', None) is not None]
+        satisfaction_rate = round(sum(scores) / len(scores), 1) if scores else 5.0
+
+        # Real hourly distribution computed from real calls
         now = datetime.now(timezone.utc)
         hourly = []
         for i in range(6, -1, -1):
             h_time = now - timedelta(hours=i)
             label = h_time.strftime("%H:00")
-            volume = 20 + (i * 9) % 25
+            hour_calls = sum(
+                1 for c in calls
+                if getattr(c, 'started_at', None) and c.started_at.hour == h_time.hour and c.started_at.date() == h_time.date()
+            )
             hourly.append({
                 "time": label,
-                "total": volume,
-                "ai_handled": volume,
+                "total": hour_calls,
+                "ai_handled": hour_calls,
                 "operator_handled": 0
             })
 
         return AnalyticsSummary(
-            total_calls_today=total + 412,
-            ai_resolved_percentage=100.0,
+            total_calls_today=total,
+            ai_resolved_percentage=100.0 if total > 0 else 0.0,
             avg_call_duration_seconds=avg_dur,
-            active_calls_count=max(1, active_count),
+            active_calls_count=active_count,
             waiting_operator_count=0,
-            satisfaction_rate=4.9,
+            satisfaction_rate=satisfaction_rate,
             topic_distribution=topic_counts,
             sentiment_distribution=sentiment_counts,
             hourly_call_volume=hourly
@@ -247,8 +255,20 @@ class CallManager:
     def get_waiting_queue_length(self) -> int:
         return 0
 
-    def get_queue_position(self, call_id: str) -> int:
-        return 0
+    def purge_all_calls(self) -> int:
+        """
+        Purges all calls from in-memory cache and deletes persisted files in saved_calls_dir.
+        Returns the number of purged calls.
+        """
+        count = len(self._calls)
+        self._calls.clear()
+        if self.saved_calls_dir.exists():
+            for f in self.saved_calls_dir.glob("*.json"):
+                try:
+                    f.unlink()
+                except Exception:
+                    pass
+        return count
 
 
 call_manager = CallManager()

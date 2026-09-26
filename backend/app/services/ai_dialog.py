@@ -19,13 +19,18 @@ from app.services.knowledge_base import (
     KnowledgeItem
 )
 from app.services.stt_service import stt_service
+from app.services.llm_orchestrator import llm_orchestrator
 
 class AIDialogManager:
     PRIMARY_MODEL = "gemini-flash-lite-latest"
 
     FAREWELL_KEYWORDS = [
         "rahmat",
+        "raxmat",
+        "rahmad",
         "katta rahmat",
+        "katta raxmat",
+        "tashakkur",
         "xayr",
         "xayir",
         "sog' bo'ling",
@@ -38,6 +43,39 @@ class AIDialogManager:
         "tushunarli",
         "minnatdorman",
         "yaxshi qoling"
+    ]
+
+    GREETING_KEYWORDS = [
+        "assalomu alaykum",
+        "assalomu aleykum",
+        "assalamu alaykum",
+        "assalamu alaikum",
+        "assalam alaykum",
+        "assalom",
+        "assalam",
+        "asalom",
+        "salom alaykum",
+        "salam alaykum",
+        "salam aleykum",
+        "salom aleykum",
+        "valaykum assalom",
+        "valaykum assalam",
+        "va alaykum assalom",
+        "va alaykum assalam",
+        "vaalaykum assalom",
+        "salom",
+        "salam",
+        "qaleysiz",
+        "qalaysiz",
+        "xayrli kun",
+        "xayrli tong",
+        "xayrli kech",
+        "alo",
+        "aloh",
+        "eshityapsizmi",
+        "eshitilyaptimi",
+        "hello",
+        "privet"
     ]
 
     def __init__(self):
@@ -64,6 +102,27 @@ class AIDialogManager:
             return False
         t_low = text.lower()
         return any(kw in t_low for kw in self.FAREWELL_KEYWORDS)
+
+    def is_greeting(self, text: str) -> bool:
+        if not text or not isinstance(text, str):
+            return False
+        if self.is_farewell(text):
+            return False
+        t_low = text.lower().strip()
+        words = re.findall(r"\b[\w'-]+\b", t_low)
+        if len(words) > 5:
+            return False
+        for g in self.GREETING_KEYWORDS:
+            if " " in g:
+                if g in t_low:
+                    return True
+            else:
+                if g in words or g == t_low.replace('.', '').replace('!', '').replace('?', '').strip():
+                    return True
+        greeting_roots = ["assalom", "assalam", "asalom", "salom", "salam", "alaykum", "alaikum", "aleykum", "eshityap", "eshitilyap"]
+        if any(r in t_low for r in greeting_roots) and len(words) <= 4:
+            return True
+        return False
 
     def _detect_sentiment(self, text: str) -> SentimentType:
         t_low = text.lower()
@@ -111,11 +170,7 @@ class AIDialogManager:
 
         # Greetings
         if any(g in t_low for g in ["assalomu alaykum", "salom", "salom alaykum", "qaleysiz", "xayrli kun"]):
-            return (
-                "Assalomu alaykum! Oliy ta'lim, fan va innovatsiyalar vazirligi hamda Maktabgacha va maktab "
-                "ta'limi vazirligining yagona rasmiy 'SözLab' sun'iy intellektli ovozli maslahatchisiga xush kelibsiz. "
-                "Ta'lim qonunchiligi, maktab, bog'cha yoki oliygoh masalalari bo'yicha qanday savolingiz bor?"
-            )
+            return "Assalomu alaykum, eshitaman. Qanday ta'lim masalasi bo'yicha yordam kerak?"
 
         # Farewell / Gratitude
         if self.is_farewell(text):
@@ -131,15 +186,17 @@ class AIDialogManager:
         faqs = legal_context.get("faqs", [])
         if faqs:
             top_faq = faqs[0]
-            return (
-                f"{top_faq['legal_basis']}ga binoan: {top_faq['short_answer']} "
-                f"{top_faq['full_answer'][:250]}..."
-            )
+            clean_short = top_faq.get("short_answer", "").strip()
+            basis = top_faq.get("legal_basis", "").split(";")[0].strip()
+            if not basis:
+                basis = "Ta'lim qonunchiligi"
+            return f"{basis}ga binoan: {clean_short}"
 
         articles = legal_context.get("articles", [])
         if articles:
             top_art = articles[0]
-            return f"{top_art['title']}ga muvofiq: {top_art['summary']}"
+            clean_summary = top_art.get("summary", "").strip()
+            return f"{top_art['title']}ga muvofiq: {clean_summary}"
 
         return (
             "Savolingiz rasmiy ta'lim qonunchiligi doirasida qabul qilindi. "
@@ -195,7 +252,12 @@ class AIDialogManager:
             "Rasmiy portal: edu.uz"
         ])
 
-    async def process_user_turn(self, call_id: str, user_text: str) -> DialogTurnResponse:
+    async def process_user_turn(
+        self,
+        call_id: str,
+        user_text: str,
+        conversation_history: Optional[List[Dict[str, Any]]] = None
+    ) -> DialogTurnResponse:
         # Check empty or whitespace user text
         if not user_text or not user_text.strip():
             return DialogTurnResponse(
@@ -211,6 +273,7 @@ class AIDialogManager:
                     "Vazirlik ishonch telefoni: 1006 / 1007"
                 ]
             )
+
 
         # Check farewell / gratitude intent
         if self.is_farewell(user_text):
@@ -231,66 +294,62 @@ class AIDialogManager:
                 ]
             )
 
+        # Check greeting intent (pure greeting without full legal inquiry)
+        if self.is_greeting(user_text):
+            return DialogTurnResponse(
+                call_id=call_id,
+                ai_text="Va alaykum assalom! O'zbekiston ta'lim qonunchiligi bo'yicha qanday savolingiz bor?",
+                sentiment=SentimentType.POSITIVE,
+                intent="Salomlashuv",
+                topic=TopicCategory.BOSHQA,
+                requires_operator=False,
+                knowledge_references=["O'zbekiston Respublikasi Ta'lim Qonunchiligi"],
+                smart_suggestions=[
+                    "1-sinfga qabul tartibi",
+                    "Davlat granti va kontrakt to'lovlari",
+                    "Talabalar turar joyi va ijara kompensatsiyasi",
+                    "Vazirlik ishonch telefoni: 1006 / 1007"
+                ],
+                llm_provider_used="rule_greeting"
+            )
+
         # 1. Retrieve complete legal context from 50 FAQs & Encyclopedia
         legal_context = get_complete_legal_context(user_text, max_faqs=3, max_articles=2)
         sentiment = self._detect_sentiment(user_text)
 
-        # 2. Strict Grounding Guardrail Check
-        if not legal_context.get("in_scope", False):
-            return DialogTurnResponse(
-                call_id=call_id,
-                ai_text=OUT_OF_SCOPE_REFUSAL,
-                sentiment=SentimentType.NEUTRAL,
-                intent="Doiradan_Tashqari_Rad",
-                topic=TopicCategory.BOSHQA,
-                requires_operator=False,
-                knowledge_references=["Vazirlik Reglamenti va Normativ Cheklovi"],
-                smart_suggestions=[
-                    "Maktabda pul yig'ish qonuniymi?",
-                    "Magistratura xotin-qizlar kontrakti qoplanadimi?",
-                    "O'qituvchini majburiy mehnatga jalb qilish mumkinmi?"
-                ]
-            )
-
+        # 2. Extract database context and history
         faqs = legal_context.get("faqs", [])
         articles = legal_context.get("articles", [])
         intent, topic = self._detect_intent_and_topic(user_text, faqs)
 
-        ai_response_text = ""
-
-        # 3. Gemini Reasoning with Strict Legal Prompt
-        client = self._get_client()
-        if client and settings.GEMINI_API_KEY:
+        # If conversation_history not explicitly supplied, extract from call if available
+        if conversation_history is None:
             try:
-                system_instruction = (
-                    "Siz O'zbekiston Respublikasi Maktabgacha va maktab ta'limi vazirligi (1006) hamda "
-                    "Oliy ta'lim, fan va innovatsiyalar vazirligi (1007) yagona rasmiy 'SözLab' sun'iy intellektli "
-                    "ovozli maslahatchisisiz.\n\n"
-                    "MUTLAQ QOIDALAR:\n"
-                    "1. Siz FAQAT VA FAQAT taqdim etilgan rasmiy yuridik bilimlar bazasi (Top-50 Savol-Javob va Ta'lim Qonunchiligi Ensiklopediyasi) "
-                    "doirasida javob berasiz.\n"
-                    "2. Har qanday shaxsiy fikr, to'qima yoki boshqa soha qonunlarini aralashtirish QAT'IYAN TAQIQLANADI.\n"
-                    "3. Har bir javobingizda aniq qonuniy asosni (Konstitutsiya moddasi, Qonun raqami, Prezident Farmoni yoki VMQ raqamini) aniq ayting.\n"
-                    "4. Ovozli qo'ng'iroq bo'lgani sababli, javobingiz 2-3 ta lo'nda, ravon, jiddiy va o'zbek adabiy tilidagi jumlalardan iborat bo'lsin.\n"
-                    "5. Tizimda inson-operatori mavjud emas, siz 100% mustaqil AI maslahatchisiz. Hech qachon operatorga ulashni taklif qilmang.\n\n"
-                    f"RASMIY YURIDIK BAZA MAZMUNI:\n{legal_context.get('formatted_context', '')}"
-                )
+                from app.services.call_manager import call_manager
+                call = call_manager.get_call(call_id)
+                if call and call.messages:
+                    conversation_history = [
+                        {"role": m.role.value, "content": m.text}
+                        for m in call.messages
+                    ]
+            except Exception:
+                conversation_history = None
 
-                response = client.models.generate_content(
-                    model=self.PRIMARY_MODEL,
-                    contents=user_text,
-                    config={"system_instruction": system_instruction, "temperature": 0.2}
-                )
-                if response and response.text:
-                    ai_response_text = response.text.strip()
-            except Exception as e:
-                print(f"[Gemini Legal Reasoning Fallback]: {e}")
-                ai_response_text = self._generate_rule_based_response(user_text, legal_context)
-        else:
-            ai_response_text = self._generate_rule_based_response(user_text, legal_context)
+        # 3. 5-Tier Ranked Multi-LLM Provider Engine with Automatic Failover
+        ai_response_text, provider_used = await llm_orchestrator.generate_response(
+            user_text=user_text,
+            conversation_history=conversation_history,
+            legal_context=legal_context
+        )
 
         if not ai_response_text:
             ai_response_text = self._generate_rule_based_response(user_text, legal_context)
+            provider_used = "deterministic_rule_engine"
+
+        # Check if LLM determined the inquiry is out of educational scope
+        if "faqat maktab va oliy ta'lim" in ai_response_text.lower() or OUT_OF_SCOPE_REFUSAL.lower() in ai_response_text.lower():
+            intent = "Doiradan_Tashqari_Rad"
+            topic = TopicCategory.BOSHQA
 
         # Extract legal references for UI chips
         kb_refs = []
@@ -311,7 +370,8 @@ class AIDialogManager:
             topic=topic,
             requires_operator=False,
             knowledge_references=kb_refs,
-            smart_suggestions=suggestions
+            smart_suggestions=suggestions,
+            llm_provider_used=provider_used
         )
 
     async def process_audio_turn(
@@ -319,7 +379,7 @@ class AIDialogManager:
         call_id: str,
         audio_bytes: bytes,
         mime_type: str = "audio/wav",
-        voice_name: str = "Gulnoza"
+        voice_name: str = "Lola"
     ) -> Tuple[str, DialogTurnResponse]:
         """
         Multimodal audio recognition using VoiceLab Studio SDK exclusively.
@@ -361,6 +421,7 @@ class AIDialogManager:
             )
             return "(Tushunarsiz ovoz)", dialog_res
 
+
         dialog_res = await self.process_user_turn(call_id, transcribed_text)
         return transcribed_text, dialog_res
 
@@ -377,29 +438,10 @@ class AIDialogManager:
 
     async def generate_call_summary(self, dialog_history: List[str]) -> str:
         """
-        Generate concise analytical summary of citizen AI call.
+        Generate concise analytical summary of citizen AI call using 5-Tier Multi-LLM Engine.
         """
-        if not dialog_history:
-            return "Fuqaroga rasmiy ta'lim qonunchiligi bo'yicha maslahat berildi."
-
-        client = self._get_client()
-        if client and settings.GEMINI_API_KEY:
-            try:
-                prompt = (
-                    "Quyidagi fuqaro va AI maslahatchi o'rtasidagi suhbatni 1-2 jumla bilan "
-                    "o'zbek tilida umumlashtiring (ko'tarilgan asosiy huquqiy masala va qonuniy yechim):\n\n"
-                    + "\n".join(dialog_history)
-                )
-                res = client.models.generate_content(
-                    model=self.PRIMARY_MODEL,
-                    contents=prompt
-                )
-                if res and res.text:
-                    return res.text.strip()
-            except Exception as e:
-                print(f"[Call Summary Error]: {e}")
-
-        return "Fuqaroning ta'lim qonunchiligi bo'yicha murojaatiga rasmiy asoslangan javob taqdim etildi."
+        summary_text, provider_used = await llm_orchestrator.generate_call_summary(dialog_history)
+        return summary_text
 
 
 dialog_manager = AIDialogManager()

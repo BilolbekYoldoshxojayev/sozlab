@@ -30,6 +30,15 @@ export interface Message {
   detected_topic?: TopicCategory;
 }
 
+export interface AudioMarker {
+  turn_index: number;
+  role: 'citizen' | 'ai' | 'operator' | string;
+  start_time: number;
+  end_time: number;
+  duration?: number;
+  text: string;
+}
+
 export interface CallRecord {
   id: string;
   citizen_name: string;
@@ -45,8 +54,13 @@ export interface CallRecord {
   primary_topic: TopicCategory;
   overall_sentiment: SentimentType;
   resolution_summary?: string;
+  summary?: string;
   resolved_by_ai: boolean;
   satisfaction_score?: number;
+  audio_url?: string;
+  recording_url?: string;
+  audio_markers?: AudioMarker[];
+  timeline_markers?: AudioMarker[];
 }
 
 export interface OperatorRecord {
@@ -123,6 +137,7 @@ export interface AnalyticsSummary {
 export interface DialogTurnResponse {
   call_id: string;
   ai_text: string;
+  status?: CallStatus;
   audio_url?: string;
   sentiment: SentimentType;
   intent: string;
@@ -130,5 +145,42 @@ export interface DialogTurnResponse {
   requires_operator: boolean;
   knowledge_references: string[];
   smart_suggestions: string[];
+}
+
+export interface ChatMessageResponse {
+  response: string;
+  provider: string;
+  latency_ms: number;
+  citations: Array<{
+    title?: string;
+    legal_basis?: string;
+    chapter?: string;
+  }>;
+  in_scope: boolean;
+}
+
+export interface HumanVsAiMetricItem {
+  id: string;
+  metric_name: string;
+  human_value: string;
+  human_numeric: number;
+  ai_value: string;
+  ai_numeric: number;
+  unit: string;
+  advantage: string;
+  impact: string;
+}
+
+export interface HumanVsAiMetricsResponse {
+  comparison_title: string;
+  metrics: HumanVsAiMetricItem[];
+  economic_summary: {
+    monthly_calls_baseline: number;
+    human_monthly_cost_usd: number;
+    ai_monthly_cost_usd: number;
+    monthly_savings_usd: number;
+    savings_percentage: number;
+    annual_savings_usd: number;
+  };
 }
 

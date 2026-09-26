@@ -49,3 +49,9 @@ secrets/
 
 # Agent runtime logs and artifacts
 .agents/
+
+# Saved call audio recordings & citizen PII
+backend/data/
+
+# TypeScript build info
+*.tsbuildinfo

@@ -1,175 +1,154 @@
 'use client';
 
-import Link from 'next/link';
-import {
-  PhoneCall, Shield, Sparkles, BookOpen, Clock, Bot,
-  ArrowRight, ShieldCheck, CheckCircle2, FileText, Scale
-} from 'lucide-react';
-import CommonQuestions from '@/components/CommonQuestions';
-import { useRole } from '@/lib/useRole';
+import React from 'react';
+import Image from 'next/image';
+import { useRouter } from 'next/navigation';
+import { User, Shield, ArrowRight, CheckCircle2, Headphones, Activity } from 'lucide-react';
+import { useRole, UserRole } from '@/lib/useRole';
 
 export default function HomePage() {
-  const { setRole } = useRole();
+  const router = useRouter();
+  const { setRole, hasSelectedRole, session, isReady } = useRole();
 
-  const coreFeatures = [
-    {
-      title: 'VoiceLab Gulnoza Ovoz Modeli',
-      desc: 'VoiceLab Studio SDK orqali tabiiy, ravon va professional o\'zbek adabiy tilidagi ovoz sintezi va tezkor transkripsiya.',
-      icon: Sparkles,
-    },
-    {
-      title: '50 ta Rasmiy FAQ va Ensiklopediya',
-      desc: 'Maktab, bog\'cha, OTM qabuli, davlat grantlari, pedagoglar huquqlari va ta\'lim standartlari bo\'yicha to\'liq normativ baza.',
-      icon: BookOpen,
-    },
-    {
-      title: 'Qat\'iy Huquqiy Cheklov (Guardrail)',
-      desc: 'AI faqat ta\'lim qonunchiligi (Konstitutsiya, O\'RQ-637, O\'RQ-901, VMQ) asosida aniq javob beradi; sohadan tashqari mavzularga to\'qima javob bermaydi.',
-      icon: Scale,
-    },
-  ];
+  // If role already selected, redirect to the appropriate page
+  React.useEffect(() => {
+    if (isReady && hasSelectedRole) {
+      if (session.role === 'admin') {
+        router.replace('/admin');
+      } else {
+        router.replace('/call');
+      }
+    }
+  }, [isReady, hasSelectedRole, session.role, router]);
 
-  const workflowStages = [
-    {
-      num: '01',
-      title: 'Ovozli Savol',
-      desc: 'Fuqaro mikrofonga erkin va tabiiy o\'zbek tilida savol beradi.',
-    },
-    {
-      num: '02',
-      title: 'VoiceLab STT',
-      desc: 'VoiceLab rasmiy nutq modeli orqali ovoz aniq matnga o\'giriladi.',
-    },
-    {
-      num: '03',
-      title: 'Yuridik RAG Tahlili',
-      desc: '50 ta rasmiy FAQ va normativ ensiklopediyadan qonuniy asoslar topiladi.',
-    },
-    {
-      num: '04',
-      title: 'Ovozli Javob & Subtitr',
-      desc: 'VoiceLab Gulnoza ovozida rasmiy moddalar keltirilib, javob qaytadi.',
-    },
-  ];
+  const handleSelectRole = (role: UserRole) => {
+    setRole(role);
+    if (role === 'admin') {
+      router.push('/admin');
+    } else {
+      router.push('/call');
+    }
+  };
+
+  // Show loading spinner while checking role
+  if (!isReady || hasSelectedRole) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center">
+        <div className="w-12 h-12 rounded-2xl bg-[#035B60]/10 flex items-center justify-center animate-pulse">
+          <div className="w-5 h-5 rounded-full border-2 border-[#FC6F01] border-t-transparent animate-spin" />
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col gap-10 py-4 sm:py-8 text-zinc-100 max-w-6xl mx-auto px-4">
-      {/* Hero Section: Minimalist Obsidian Enterprise */}
-      <div className="relative overflow-hidden rounded-2xl bg-zinc-900 border border-zinc-800 p-8 sm:p-12 lg:p-14 shadow-2xl">
-        <div className="relative z-10 max-w-3xl">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-800 border border-zinc-700 text-xs font-medium text-zinc-300 mb-6">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>1006 / 1007 Yagona Avtonom Ovozli Markaz</span>
+    <div className="min-h-[85vh] flex items-center justify-center px-4 py-8">
+      <div className="w-full max-w-3xl">
+        {/* Brand Header */}
+        <div className="text-center mb-10 flex flex-col items-center">
+          <div className="mb-4">
+            <Image
+              src="/sozlab-logo.png"
+              alt="SözLab Logo"
+              width={220}
+              height={55}
+              className="h-14 w-auto object-contain mx-auto"
+              priority
+            />
           </div>
-
-          <h1 className="text-3xl sm:text-5xl font-bold tracking-tight text-white leading-tight mb-5">
-            O&apos;zbekiston Respublikasi Ta&apos;lim Vazirliklari uchun{' '}
-            <span className="text-zinc-200">
-              100% Avtonom AI Ovozli Call-Markazi
-            </span>
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#035B60]/10 border border-[#035B60]/20 text-[#035B60] text-xs font-bold mb-3">
+            <Activity className="w-3.5 h-3.5 text-[#FC6F01]" />
+            <span>O&apos;zbekiston Ta&apos;lim Vazirligi AI Ovozli Call-Markazi</span>
+          </div>
+          <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-slate-900">
+            Tizimga Kirish Rolini Tanlang
           </h1>
-
-          <p className="text-sm sm:text-base text-zinc-400 leading-relaxed mb-8 max-w-2xl font-normal">
-            Maktabgacha ta&apos;lim, maktablar, oliy ta&apos;lim qabuli, davlat grantlari va pedagoglar huquqiy himoyasi bo&apos;yicha barcha savollarga 24/7 rejimida tabiiy o&apos;zbek tilida rasmiy qonuniy asoslangan ovozli maslahat.
+          <p className="text-sm text-slate-600 max-w-md mx-auto mt-2 leading-relaxed">
+            Fuqaro sifatida ta&apos;lim qonunchiligi bo&apos;yicha ovozli maslahat oling yoki Admin sifatida yagona jonli monitoring stantsiyasini boshqaring.
           </p>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <Link
-              href="/call"
-              onClick={() => setRole('citizen')}
-              className="flex items-center gap-2 px-6 py-3 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs transition active:scale-95 shadow-md"
-            >
-              <PhoneCall className="w-4 h-4" />
-              <span>Ovozli Qo&apos;ng&apos;iroqni Boshlash</span>
-              <ArrowRight className="w-3.5 h-3.5 ml-1" />
-            </Link>
-
-            <Link
-              href="/history"
-              className="flex items-center gap-2 px-5 py-3 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 font-medium text-xs transition active:scale-95"
-            >
-              <FileText className="w-4 h-4 text-zinc-400" />
-              <span>50 ta Rasmiy FAQ Bazasini O&apos;qish</span>
-            </Link>
-
-            <Link
-              href="/admin"
-              onClick={() => setRole('admin')}
-              className="flex items-center gap-2 px-5 py-3 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 font-medium text-xs transition active:scale-95"
-            >
-              <Shield className="w-4 h-4 text-zinc-400" />
-              <span>Admin Nazorati</span>
-            </Link>
-          </div>
         </div>
 
-        {/* Quick Metrics Bar */}
-        <div className="mt-10 pt-6 border-t border-zinc-800 grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div>
-            <div className="text-xl font-bold text-white font-mono">100%</div>
-            <div className="text-xs text-zinc-400 mt-0.5">Avtonom AI Yechim</div>
-          </div>
-          <div>
-            <div className="text-xl font-bold text-white font-mono">&lt; 1.2s</div>
-            <div className="text-xs text-zinc-400 mt-0.5">VoiceLab Ovoz Sintezi</div>
-          </div>
-          <div>
-            <div className="text-xl font-bold text-white font-mono">50 FAQ</div>
-            <div className="text-xs text-zinc-400 mt-0.5">8 ta Asosiy Bo&apos;lim</div>
-          </div>
-          <div>
-            <div className="text-xl font-bold text-white font-mono">24 / 7</div>
-            <div className="text-xs text-zinc-400 mt-0.5">Uzluksiz Xizmat</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Core Advantages */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {coreFeatures.map((item, idx) => {
-          const Icon = item.icon;
-          return (
-            <div
-              key={idx}
-              className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 flex flex-col justify-between hover:border-zinc-700 transition"
-            >
-              <div>
-                <div className="w-10 h-10 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-200 mb-4">
-                  <Icon className="w-5 h-5 text-zinc-300" />
+        {/* Two Role Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* User / Citizen Card */}
+          <button
+            onClick={() => handleSelectRole('citizen')}
+            className="text-left flex flex-col justify-between rounded-3xl border-2 border-[#035B60]/20 bg-gradient-to-b from-[#035B60]/5 to-transparent p-7 hover:border-[#035B60] hover:shadow-xl hover:shadow-[#035B60]/10 transition-all group cursor-pointer active:scale-[0.98]"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-5">
+                <div className="w-14 h-14 rounded-2xl bg-[#035B60] text-white flex items-center justify-center shadow-lg shadow-[#035B60]/30 group-hover:scale-105 transition-transform">
+                  <Headphones className="w-7 h-7" />
                 </div>
-                <h3 className="font-semibold text-sm text-white mb-2">{item.title}</h3>
-                <p className="text-xs text-zinc-400 leading-relaxed">{item.desc}</p>
+                <span className="text-[10px] uppercase font-black tracking-wider px-3 py-1 rounded-full bg-[#035B60]/15 text-[#035B60] border border-[#035B60]/25">
+                  Fuqaro Murojaati
+                </span>
+              </div>
+
+              <h3 className="text-xl font-black text-slate-900 group-hover:text-[#035B60] transition">
+                Fuqaro (Ovozli Muloqot)
+              </h3>
+              <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                Ta&apos;lim to&apos;g&apos;risidagi qonunlar, kontraktlar, imtiyozlar va grantlar bo&apos;yicha ovozli AI maslahat.
+              </p>
+
+              <div className="mt-5 pt-4 border-t border-[#035B60]/15 space-y-2.5">
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                  <CheckCircle2 className="w-4 h-4 text-[#035B60] shrink-0" />
+                  <span>Tabiiy o&apos;zbek ovozi (Hands-Free VAD)</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                  <CheckCircle2 className="w-4 h-4 text-[#035B60] shrink-0" />
+                  <span>Jonli moddalar va qonuniy transkriptlar</span>
+                </div>
               </div>
             </div>
-          );
-        })}
-      </div>
 
-      {/* 50 FAQ Interactive Knowledge Base Preview */}
-      <CommonQuestions />
-
-      {/* Workflow: How It Works */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 sm:p-10">
-        <div className="max-w-xl mb-8">
-          <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider bg-zinc-800 px-2.5 py-1 rounded border border-zinc-700">
-            Avtonom Jarayon
-          </span>
-          <h2 className="text-xl sm:text-2xl font-bold text-white mt-3 mb-1.5">
-            SözLab Qanday Ishlaydi?
-          </h2>
-          <p className="text-xs text-zinc-400">
-            Fuqaro mikrofoni orqali yuborilgan ovozli murojaatdan to rasmiy huquqiy javobgacha bo&apos;lgan 4 bosqichli zanjir.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {workflowStages.map((st, i) => (
-            <div key={i} className="p-5 bg-zinc-950/70 rounded-xl border border-zinc-800/80">
-              <span className="text-2xl font-bold text-zinc-500 font-mono block mb-2">{st.num}</span>
-              <h4 className="font-semibold text-xs text-white mb-1.5">{st.title}</h4>
-              <p className="text-xs text-zinc-400 leading-relaxed">{st.desc}</p>
+            <div className="mt-7 w-full py-3.5 px-4 rounded-2xl bg-[#035B60] group-hover:bg-[#02373A] text-white font-bold text-sm shadow-md shadow-[#035B60]/20 flex items-center justify-center gap-2 transition">
+              <span>Fuqaro sifatida kirish</span>
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </div>
-          ))}
+          </button>
+
+          {/* Admin Monitoring Card */}
+          <button
+            onClick={() => handleSelectRole('admin')}
+            className="text-left flex flex-col justify-between rounded-3xl border-2 border-[#FC6F01]/30 bg-gradient-to-b from-[#FC6F01]/5 to-transparent p-7 hover:border-[#FC6F01] hover:shadow-xl hover:shadow-[#FC6F01]/15 transition-all group cursor-pointer active:scale-[0.98]"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-5">
+                <div className="w-14 h-14 rounded-2xl bg-[#FC6F01] text-white flex items-center justify-center shadow-lg shadow-[#FC6F01]/30 group-hover:scale-105 transition-transform">
+                  <Shield className="w-7 h-7" />
+                </div>
+                <span className="text-[10px] uppercase font-black tracking-wider px-3 py-1 rounded-full bg-[#FC6F01]/15 text-[#FC6F01] border border-[#FC6F01]/25">
+                  Yagona Monitoring
+                </span>
+              </div>
+
+              <h3 className="text-xl font-black text-slate-900 group-hover:text-[#FC6F01] transition">
+                Admin (Jonli Monitoring)
+              </h3>
+              <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                Yagona interfeys: barcha liniyalarni jonli eshitish, yozuvlarni tekshirish va nutq boshlanish markerlari.
+              </p>
+
+              <div className="mt-5 pt-4 border-t border-[#FC6F01]/15 space-y-2.5">
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                  <CheckCircle2 className="w-4 h-4 text-[#FC6F01] shrink-0" />
+                  <span>Jonli audio &amp; teleprompter oqimi</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                  <CheckCircle2 className="w-4 h-4 text-[#FC6F01] shrink-0" />
+                  <span>Birlashtirilgan to&apos;liq audio &amp; beat markerlar</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-7 w-full py-3.5 px-4 rounded-2xl bg-[#FC6F01] group-hover:bg-[#E56300] text-white font-bold text-sm shadow-md shadow-[#FC6F01]/25 flex items-center justify-center gap-2 transition">
+              <span>Admin Monitoringga kirish</span>
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </div>
+          </button>
         </div>
       </div>
     </div>

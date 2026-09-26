@@ -51,14 +51,14 @@ export default function AudioWaveform({ mode, audioElement }: AudioWaveformProps
           amplitude = 6 + Math.sin(phase * 0.5 + i * 0.1) * 3;
         }
 
-        // Color gradients
-        let fillStyle = '#cbd5e1';
+        // Color gradients - Strictly 3-color palette: Slate, Blue shades, White
+        let fillStyle = '#334155';
         if (mode === 'recording') {
-          fillStyle = i % 2 === 0 ? '#10b981' : '#059669'; // Emerald user
+          fillStyle = i % 2 === 0 ? '#60a5fa' : '#3b82f6'; // Bright blue
         } else if (mode === 'speaking') {
-          fillStyle = i % 2 === 0 ? '#1e6091' : '#0b2b50'; // Azure / Navy AI
+          fillStyle = i % 2 === 0 ? '#2563eb' : '#1d4ed8'; // Royal blue
         } else if (mode === 'thinking') {
-          fillStyle = '#d97706'; // Amber thinking
+          fillStyle = i % 2 === 0 ? '#93c5fd' : '#bfdbfe'; // Soft ice blue
         }
 
         const x = i * (barWidth + gap);
@@ -82,7 +82,13 @@ export default function AudioWaveform({ mode, audioElement }: AudioWaveformProps
   }, [mode, audioElement]);
 
   return (
-    <div className="w-full flex flex-col items-center justify-center p-3 bg-slate-900/5 rounded-2xl border border-slate-200/60">
+    <div
+      className="w-full flex flex-col items-center justify-center p-3 rounded-2xl border"
+      style={{
+        backgroundColor: 'var(--bg-subtle)',
+        borderColor: 'var(--border-subtle)',
+      }}
+    >
       <canvas
         ref={canvasRef}
         width={420}
@@ -91,23 +97,23 @@ export default function AudioWaveform({ mode, audioElement }: AudioWaveformProps
       />
       <div className="flex items-center gap-2 mt-2 text-xs font-semibold">
         {mode === 'idle' && (
-          <span className="text-slate-500">Tayyor holatda • Mikrofon tugmasini bosing</span>
+          <span style={{ color: 'var(--text-muted)' }}>Tayyor holatda • Mikrofon tugmasini bosing</span>
         )}
         {mode === 'recording' && (
-          <span className="text-emerald-600 flex items-center gap-1.5 animate-pulse">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+          <span className="text-blue-400 flex items-center gap-1.5 animate-pulse">
+            <span className="w-2 h-2 rounded-full bg-blue-400" />
             Fuqaro nutqi yozilmoqda...
           </span>
         )}
         {mode === 'thinking' && (
-          <span className="text-amber-600 flex items-center gap-1.5 animate-pulse">
-            <span className="w-2 h-2 rounded-full bg-amber-500" />
+          <span className="text-blue-200 flex items-center gap-1.5 animate-pulse">
+            <span className="w-2 h-2 rounded-full bg-blue-300" />
             AI vazirlik nizomlaridan javob shakllantirmoqda...
           </span>
         )}
         {mode === 'speaking' && (
-          <span className="text-blue-700 flex items-center gap-1.5 animate-pulse">
-            <span className="w-2 h-2 rounded-full bg-blue-600" />
+          <span className="text-blue-300 flex items-center gap-1.5 animate-pulse">
+            <span className="w-2 h-2 rounded-full bg-blue-500" />
             Vazir AI javob bermoqda (Madina ovozi)
           </span>
         )}

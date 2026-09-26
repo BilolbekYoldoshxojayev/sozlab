@@ -73,7 +73,7 @@ async def test_ai_dialog_strict_refusal_on_out_of_scope():
     res = await dialog_manager.process_user_turn("test-call-1", "Bugun Toshkentda ob-havo qanday bo'ladi?")
     assert res.intent == "Doiradan_Tashqari_Rad"
     assert OUT_OF_SCOPE_REFUSAL in res.ai_text
-    assert "vazirlikning rasmiy ta'lim qonunchiligi bazasiga kirmaydi" in res.ai_text
+    assert "rasmiy savollarga javob bera olaman" in res.ai_text
 
 @pytest.mark.asyncio
 async def test_ai_dialog_answers_with_legal_citation_for_pul_yigish():

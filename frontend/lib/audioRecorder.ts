@@ -1,4 +1,4 @@
-// Audio Recorder using MediaRecorder API and Web Audio API for Live Waveform
+// Audio Recorder using MediaRecorder API and Web Audio API for Live Waveform & Vocal Bandpass Isolation
 
 export interface AudioRecorderState {
   isRecording: boolean;
@@ -34,38 +34,56 @@ export class AudioRecorder {
     }
 
     try {
+      // Near-field speech capture: strict echo cancellation & noise suppression, autoGainControl: false
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          autoGainControl: true,
+          autoGainControl: false, // Don't boost distant background chatter
+          channelCount: 1,
+          sampleRate: 48000,
         },
       });
 
-      // Set up AudioContext for real-time waveform level monitoring
+      // Set up AudioContext with Vocal Bandpass Filters (150Hz - 3400Hz)
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       this.audioContext = new AudioCtx();
       const source = this.audioContext.createMediaStreamSource(this.mediaStream);
+
+      // 1. Highpass filter: cuts low-frequency rumble, hum, air conditioning (< 150Hz)
+      const highpass = this.audioContext.createBiquadFilter();
+      highpass.type = 'highpass';
+      highpass.frequency.value = 150;
+
+      // 2. Lowpass filter: cuts high-frequency hiss, clicks, background clatter (> 3400Hz)
+      const lowpass = this.audioContext.createBiquadFilter();
+      lowpass.type = 'lowpass';
+      lowpass.frequency.value = 3400;
+
+      // 3. Connect filter chain to AnalyserNode
+      source.connect(highpass);
+      highpass.connect(lowpass);
+
       this.analyser = this.audioContext.createAnalyser();
       this.analyser.fftSize = 256;
-      source.connect(this.analyser);
+      lowpass.connect(this.analyser);
 
-      const bufferLength = this.analyser.frequencyBinCount;
-      const dataArray = new Uint8Array(bufferLength);
+      const bufferLength = this.analyser.fftSize;
+      const timeData = new Uint8Array(bufferLength);
 
       const checkAudioLevel = () => {
         if (!this.analyser || !this.mediaRecorder || this.mediaRecorder.state !== 'recording') {
           return;
         }
-        this.analyser.getByteFrequencyData(dataArray);
-        let sum = 0;
+        this.analyser.getByteTimeDomainData(timeData);
+        let sumSquares = 0;
         for (let i = 0; i < bufferLength; i++) {
-          sum += dataArray[i];
+          const normSample = (timeData[i] - 128) / 128.0;
+          sumSquares += normSample * normSample;
         }
-        const average = sum / bufferLength;
-        const normalized = Math.min(1, average / 128); // 0.0 to 1.0
+        const rms = Math.sqrt(sumSquares / bufferLength);
         if (this.onLevelChange) {
-          this.onLevelChange(normalized);
+          this.onLevelChange(rms);
         }
         this.animationFrameId = requestAnimationFrame(checkAudioLevel);
       };

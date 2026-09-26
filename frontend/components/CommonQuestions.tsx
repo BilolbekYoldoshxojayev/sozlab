@@ -118,7 +118,7 @@ export default function CommonQuestions() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-zinc-800 pb-5 mb-6">
         <div>
           <div className="flex items-center space-x-2 text-zinc-400 mb-1">
-            <BookOpen className="w-4 h-4 text-emerald-400" />
+            <BookOpen className="w-4 h-4 text-blue-400" />
             <span className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
               Rasmiy Yuridik Bilimlar Bazasi
             </span>
@@ -212,7 +212,7 @@ export default function CommonQuestions() {
                         href="/call"
                         className="inline-flex items-center space-x-1 text-zinc-200 hover:text-white text-[11px] font-semibold bg-zinc-800 px-2.5 py-1 rounded border border-zinc-700"
                       >
-                        <Volume2 className="w-3 h-3 text-emerald-400" />
+                        <Volume2 className="w-3 h-3 text-blue-400" />
                         <span>Ovozli Tinglash</span>
                       </Link>
                     </div>

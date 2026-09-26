@@ -2,141 +2,105 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { PhoneCall, BarChart3, History, Shield, Sparkles, User, Settings, BookOpen } from 'lucide-react';
-import { useRole, UserRole } from '@/lib/useRole';
+import { PhoneCall, MessageSquare, Shield, User, Settings, BarChart3 } from 'lucide-react';
+import { useRole } from '@/lib/useRole';
 import RoleGateModal from './RoleGateModal';
-
-interface NavItem {
-  href: string;
-  label: string;
-  icon: React.ElementType;
-  allowedRoles: UserRole[];
-}
-
-const ALL_NAV_LINKS: NavItem[] = [
-  { href: '/', label: 'Bosh Sahifa', icon: Sparkles, allowedRoles: ['citizen', 'admin'] },
-  { href: '/call', label: "Ovozli Qo'ng'iroq (1006 / 1007)", icon: PhoneCall, allowedRoles: ['citizen'] },
-  { href: '/history', label: 'Yuridik FAQ Baza (50)', icon: BookOpen, allowedRoles: ['citizen', 'admin'] },
-  { href: '/admin', label: 'Admin Boshqaruvi', icon: Shield, allowedRoles: ['admin'] },
-  { href: '/analytics', label: 'Analitika', icon: BarChart3, allowedRoles: ['admin'] },
-];
 
 export default function Navbar() {
   const pathname = usePathname();
-  const { session, openRoleGate, isReady } = useRole();
+  const { session, openRoleGate, hasSelectedRole } = useRole();
 
-  const getRoleBadge = () => {
-    if (session.role === 'admin') {
-      return {
-        label: 'Vazirlik Admin',
-        color: 'bg-zinc-800 text-zinc-200 border-zinc-700',
-        icon: Shield,
-        ctaHref: '/admin',
-        ctaLabel: 'Admin Paneli',
-        ctaClass: 'bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700',
-      };
-    }
-    return {
-      label: session.citizenName || 'Fuqaro',
-      color: 'bg-zinc-800 text-zinc-200 border-zinc-700',
-      icon: User,
-      ctaHref: '/call',
-      ctaLabel: "Ovozli Qo'ng'iroq",
-      ctaClass: 'bg-zinc-100 hover:bg-white text-zinc-950 font-semibold',
-    };
-  };
+  const isAdmin = session.role === 'admin';
+  const isHomePage = pathname === '/';
 
-  const badge = getRoleBadge();
-  const RoleIcon = badge.icon;
-
-  const visibleLinks = isReady
-    ? ALL_NAV_LINKS.filter((link) => link.allowedRoles.includes(session.role))
-    : [];
+  // Hide navbar entirely on home page (role selection screen)
+  if (isHomePage) {
+    return <RoleGateModal />;
+  }
 
   return (
     <>
-      <header className="sticky top-0 z-50 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800/80">
-        {/* Top Ministry Ribbon */}
-        <div className="bg-black/90 text-zinc-400 text-xs py-1.5 px-4 sm:px-8 flex justify-between items-center border-b border-zinc-900">
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            <span className="font-medium tracking-wide text-zinc-300">
-              O&apos;ZBEKISTON RESPUBLIKASI TA&apos;LIM VAZIRLIKLARI YAGONA AXBOROT TIZIMI
-            </span>
-          </div>
-          <div className="flex items-center gap-4 text-[11px] font-medium text-zinc-400">
-            <span className="hidden sm:inline">Ishonch Telefonlari: <strong className="text-zinc-200">1006 / 1007</strong></span>
-            <span className="hidden md:inline">|</span>
-            <span className="hidden md:inline">SözLab: <strong className="text-zinc-200">100% Avtonom AI</strong></span>
-          </div>
-        </div>
-
-        {/* Main Navigation Bar */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
-          <Link href="/" className="flex items-center gap-3 group">
-            <div className="w-9 h-9 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-200 transition-colors group-hover:border-zinc-700">
-              <Shield className="w-4 h-4 text-zinc-300" />
+      {/* Top Header Navbar */}
+      <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-xs backdrop-blur-md">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-14 sm:h-16">
+          {/* Logo */}
+          <Link href={isAdmin ? "/admin" : "/call"} className="flex items-center gap-3 group">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white p-1 border border-slate-200 shadow-sm flex items-center justify-center transition-all group-hover:scale-105">
+              <img src="/sozlab-logo.png" alt="SözLab Logo" className="w-full h-full object-contain" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-base text-zinc-100 tracking-tight">SÖZLAB</span>
-                <span className="bg-zinc-800 text-zinc-300 text-[10px] font-semibold px-2 py-0.5 rounded border border-zinc-700">
-                  VoiceLab AI
-                </span>
-              </div>
-              <p className="text-[11px] text-zinc-500 font-medium -mt-0.5">
-                Avtonom Ta&apos;lim Call-Markazi
-              </p>
+            <div className="flex flex-col">
+              <span className="font-black text-lg tracking-tight leading-none text-[#035B60] flex items-center">
+                SÖZ<span className="text-[#FC6F01]">LAB</span>
+              </span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider leading-none mt-1">
+                {isAdmin ? "Monitoring Paneli" : "Ovozli Maslahat"}
+              </span>
             </div>
           </Link>
 
-          {/* Dynamically Filtered Navigation Links */}
-          <nav className="hidden md:flex items-center gap-1">
-            {visibleLinks.map((link) => {
-              const Icon = link.icon;
-              const isActive = pathname === link.href;
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                    isActive
-                      ? 'bg-zinc-800 text-white'
-                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
-                  }`}
-                >
-                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-zinc-500'}`} />
-                  {link.label}
-                </Link>
-              );
-            })}
-          </nav>
+          {/* Top Admin Status Badge if Role is Admin (Single Monitoring Interface) */}
+          {isAdmin && (
+            <div className="hidden sm:flex items-center gap-2">
+              <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#035B60]/10 text-[#035B60] border border-[#035B60]/20">
+                <span className="w-2 h-2 rounded-full bg-[#FC6F01] animate-ping" />
+                <span>Yagona Jonli Monitoring</span>
+              </div>
+            </div>
+          )}
 
-          {/* Role Switcher & Action CTA */}
-          <div className="flex items-center gap-2.5">
+          {/* Right Action: Role Switcher */}
+          <div className="flex items-center gap-2">
             <button
               onClick={openRoleGate}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition hover:border-zinc-600 active:scale-[0.98] ${badge.color}`}
-              title="Rolni o'zgartirish"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition active:scale-95 shadow-xs cursor-pointer"
+              title="Rolni tanlash"
             >
-              <RoleIcon className="w-3.5 h-3.5 text-zinc-400" />
-              <span className="truncate max-w-[120px]">{badge.label}</span>
-              <Settings className="w-3 h-3 text-zinc-500 ml-0.5" />
+              {isAdmin ? (
+                <Shield className="w-4 h-4 text-[#FC6F01]" />
+              ) : (
+                <User className="w-4 h-4 text-[#035B60]" />
+              )}
+              <span className="font-bold">{isAdmin ? "Admin" : "Foydalanuvchi"}</span>
+              <Settings className="w-3.5 h-3.5 text-slate-400" />
             </button>
-
-            <Link
-              href={badge.ctaHref}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs transition active:scale-[0.98] ${badge.ctaClass}`}
-            >
-              <RoleIcon className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">{badge.ctaLabel}</span>
-            </Link>
           </div>
         </div>
       </header>
 
-      {/* Upfront & On-Demand Role Gate Modal */}
+      {/* Bottom Floating 2-Button Navbar for User (Citizen) */}
+      {!isAdmin && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-full max-w-xs px-4">
+          <div className="bg-white/95 backdrop-blur-lg border border-slate-200 shadow-xl rounded-2xl p-1.5 flex items-center justify-around gap-2">
+            <Link
+              href="/call"
+              className={`flex-1 flex flex-col items-center justify-center py-2 px-3 rounded-xl transition-all ${
+                pathname === '/call'
+                  ? 'bg-[#035B60] text-white font-bold shadow-md shadow-[#035B60]/25'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 font-medium'
+              }`}
+            >
+              <PhoneCall className="w-5 h-5" />
+              <span className="text-[11px] mt-0.5">Qo&apos;ng&apos;iroq</span>
+            </Link>
+
+            <Link
+              href="/chat"
+              className={`flex-1 flex flex-col items-center justify-center py-2 px-3 rounded-xl transition-all ${
+                pathname === '/chat'
+                  ? 'bg-[#FC6F01] text-white font-bold shadow-md shadow-[#FC6F01]/25'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 font-medium'
+              }`}
+            >
+              <MessageSquare className="w-5 h-5" />
+              <span className="text-[11px] mt-0.5">AI Chat</span>
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* Role Gate Modal */}
       <RoleGateModal />
     </>
   );
 }
+

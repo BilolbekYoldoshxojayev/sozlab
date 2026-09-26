@@ -40,19 +40,35 @@ class STTService:
             if transcript and transcript.strip():
                 return transcript.strip()
         except Exception as e:
-            logger.warning(f"[VoiceLab STT Warning]: {e}. Attempting Aisha fallback.")
+            print(f"⚠️ [VoiceLab STT Warning]: {e}. Attempting Groq Whisper fallback...")
+            logger.warning(f"[VoiceLab STT Warning]: {e}. Attempting Groq Whisper fallback.")
 
-        # 2. Secondary Fallback: Aisha STT API
-        try:
-            transcript = await aisha_service.transcribe_audio(
-                audio_bytes=audio_bytes,
-                filename=filename,
-                language=language,
-            )
-            if transcript and transcript.strip():
-                return transcript.strip()
-        except Exception as ex:
-            logger.error(f"[Aisha STT Fallback Error]: {ex}")
+        # 2. Secondary High-Speed Fallback: Groq Whisper Large v3 Turbo (Uzbek)
+        if settings.GROQ_API_KEY:
+            try:
+                import httpx
+                import time
+                t0 = time.perf_counter()
+                print(f"🔄 [STT FALLBACK] Running Groq Whisper Large v3 Turbo ({len(audio_bytes):,} bytes)...")
+                headers = {"Authorization": f"Bearer {settings.GROQ_API_KEY}"}
+                files = {"file": (filename or "speech.wav", audio_bytes, mime_type or "audio/wav")}
+                data = {"model": "whisper-large-v3-turbo", "language": "uz"}
+                async with httpx.AsyncClient(timeout=25.0) as client:
+                    resp = await client.post(
+                        "https://api.groq.com/openai/v1/audio/transcriptions",
+                        headers=headers,
+                        files=files,
+                        data=data
+                    )
+                    if resp.status_code == 200:
+                        t1 = time.perf_counter()
+                        text = resp.json().get("text", "").strip()
+                        if text:
+                            print(f"✅ [GROQ WHISPER STT] Fallback transcribed in {(t1-t0):.2f}s: '{text}'")
+                            return text
+            except Exception as ex:
+                print(f"❌ [GROQ WHISPER STT Error]: {ex}")
+                logger.error(f"[Groq Whisper STT Error]: {ex}")
 
         return ""
 

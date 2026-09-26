@@ -1,6 +1,6 @@
 """
 Text-to-Speech (TTS) Service with VoiceLab Primary Engine:
-Primary: VoiceLab Official Studio SDK (Gulnoza model, WAV format)
+Primary: VoiceLab Official Studio SDK (Lola model, WAV format)
 Fallback: Microsoft Edge-TTS (uz-UZ-MadinaNeural / uz-UZ-SardorNeural, MP3 format)
 Resilience: In-memory Circuit Breaker (CLOSED, OPEN, HALF_OPEN) & MD5 disk cache
 """
@@ -110,15 +110,17 @@ class TTSService:
         prefer_voicelab: bool = True,
     ) -> Tuple[str, float, bool]:
         """
-        Prioritizes VoiceLab Gulnoza TTS, with seamless fallback to Edge-TTS (uz-UZ-MadinaNeural).
+        Prioritizes VoiceLab Lola TTS, with seamless fallback to Edge-TTS (uz-UZ-MadinaNeural).
         Returns: (audio_url_path, duration_estimate_seconds, was_cached)
         """
-        clean_text = text.strip() if text else ""
+        from app.services.uzbek_text_normalizer import normalize_text_for_tts
+        clean_text = normalize_text_for_tts(text) if text else ""
         if not clean_text:
             clean_text = "Eshitaman, savolingizni bering."
 
-        # Duration estimate (~13-15 chars per second for spoken Uzbek)
-        duration_estimate = max(1.0, round(len(clean_text) / 14.0, 2))
+
+        # Duration estimate (~13-15 chars per second for spoken Uzbek + 0.35s silence padding)
+        duration_estimate = max(1.0, round(len(clean_text) / 14.0 + 0.35, 2))
 
         # Target identifiers
         vl_voice_id = settings.VOICELAB_VOICE_ID

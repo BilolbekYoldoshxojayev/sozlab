@@ -143,6 +143,57 @@ class SupabaseService:
                     return res.json()
         except Exception as e:
             logger.warning(f"Error fetching calls from Supabase: {e}")
-        return []
+    async def purge_all_records(self) -> Dict[str, Any]:
+        """
+        Purges all call records and transcripts from Supabase PostgreSQL tables and local offline cache.
+        """
+        result = {"supabase_purged": False, "offline_cache_purged": False, "detail": ""}
+
+        # Clear local offline file
+        try:
+            if self.offline_file.exists():
+                self.offline_file.unlink()
+                result["offline_cache_purged"] = True
+                logger.info(f"Purged local offline archive: {self.offline_file}")
+        except Exception as e:
+            logger.error(f"Failed to purge offline file: {e}")
+
+        if not self.is_configured():
+            result["detail"] = "Supabase unconfigured; offline cache cleared."
+            return result
+
+        headers = self._get_headers()
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                # 1. Try RPC procedure first if configured
+                rpc_endpoint = f"{self.url}/rest/v1/rpc/purge_all_call_records"
+                try:
+                    res_rpc = await client.post(rpc_endpoint, headers=headers, json={})
+                    if res_rpc.status_code in (200, 204):
+                        result["supabase_purged"] = True
+                        result["detail"] = "Successfully purged via RPC procedure."
+                        return result
+                except Exception:
+                    pass
+
+                # 2. Direct PostgREST delete
+                # Delete transcripts first (child)
+                transcripts_url = f"{self.url}/rest/v1/call_transcripts?id=not.is.null"
+                await client.delete(transcripts_url, headers=headers)
+
+                # Delete calls (parent)
+                calls_url = f"{self.url}/rest/v1/calls?id=not.is.null"
+                res_calls = await client.delete(calls_url, headers=headers)
+                if res_calls.status_code in (200, 204):
+                    result["supabase_purged"] = True
+                    result["detail"] = "Successfully purged via REST delete."
+                else:
+                    result["detail"] = f"REST delete status: {res_calls.status_code}"
+        except Exception as e:
+            logger.warning(f"Error purging Supabase records: {e}")
+            result["detail"] = str(e)
+
+        return result
 
 supabase_service = SupabaseService()
+

@@ -17,7 +17,9 @@ class CallStatus(str, Enum):
 class OperatorStatus(str, Enum):
     AVAILABLE = "available"
     BUSY = "busy"
+    COUNTDOWN = "countdown"
     OFFLINE = "offline"
+
 
 class OperatorRecord(BaseModel):
     id: str
@@ -56,6 +58,8 @@ class MessageSchema(BaseModel):
     audio_url: Optional[str] = None
     sentiment: Optional[SentimentType] = None
     detected_topic: Optional[TopicCategory] = None
+    llm_provider_used: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
 
 class CallRecord(BaseModel):
     id: str
@@ -72,6 +76,13 @@ class CallRecord(BaseModel):
     resolution_summary: Optional[str] = None
     resolved_by_ai: bool = True
     satisfaction_score: Optional[int] = Field(default=5, ge=1, le=5)
+    audio_url: Optional[str] = None
+    recording_url: Optional[str] = None
+    full_audio_url: Optional[str] = None
+    audio_markers: Optional[List[Dict[str, Any]]] = None
+    timeline_markers: Optional[List[Dict[str, Any]]] = None
+    last_llm_provider: Optional[str] = None
+    llm_provider_used: Optional[str] = None
 
 class KnowledgeItem(BaseModel):
     id: str
@@ -114,6 +125,7 @@ class DialogTurnResponse(BaseModel):
     smart_suggestions: List[str] = []
     queue_position: Optional[int] = None
     assigned_operator: Optional[str] = None
+    llm_provider_used: Optional[str] = None
 
 class AudioTurnResponse(BaseModel):
     call_id: str
@@ -130,6 +142,7 @@ class AudioTurnResponse(BaseModel):
     requires_operator: bool
     queue_position: Optional[int] = None
     assigned_operator: Optional[str] = None
+    llm_provider_used: Optional[str] = None
 
     @model_validator(mode="after")
     def sync_aliases(self):

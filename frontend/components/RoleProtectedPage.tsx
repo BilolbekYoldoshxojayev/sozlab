@@ -2,11 +2,12 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
-import { ShieldAlert, ArrowRight, Shield, PhoneCall, AlertOctagon } from 'lucide-react';
+import { ShieldAlert, ArrowRight, Shield, PhoneCall, AlertOctagon, Headset } from 'lucide-react';
 import { useRole, UserRole } from '@/lib/useRole';
 
 export interface RoleProtectedPageProps {
-  allowedRoles: UserRole[];
+  allowedRoles?: UserRole[];
+  requiredRole?: UserRole;
   children: React.ReactNode;
   fallbackPath?: string;
 }
@@ -29,6 +30,14 @@ const ROLE_METAS: Record<UserRole, RoleMeta> = {
     badgeClass: 'bg-zinc-800 text-zinc-200 border-zinc-700',
     buttonClass: 'bg-zinc-100 hover:bg-white text-zinc-950',
   },
+  operator: {
+    name: 'Inson Operator',
+    primaryPath: '/operator',
+    primaryLabel: "Operator Paneliga O'tish",
+    icon: Headset,
+    badgeClass: 'bg-zinc-800 text-zinc-200 border-zinc-700',
+    buttonClass: 'bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700',
+  },
   admin: {
     name: "Vazirlik Ma'muri (Admin)",
     primaryPath: '/admin',
@@ -41,13 +50,13 @@ const ROLE_METAS: Record<UserRole, RoleMeta> = {
 
 export default function RoleProtectedPage({
   allowedRoles,
+  requiredRole,
   children,
   fallbackPath,
 }: RoleProtectedPageProps) {
   const router = useRouter();
   const { session, isReady, hasSelectedRole, openRoleGate } = useRole();
 
-  // 1. Prevent Flash of Unauthorized Content while loading
   if (!isReady) {
     return (
       <div className="min-h-[50vh] flex flex-col items-center justify-center p-6 text-center animate-fade-in">
@@ -61,46 +70,35 @@ export default function RoleProtectedPage({
     );
   }
 
-  // 2. If user hasn't selected a role yet, RoleGateModal is open
-  if (!hasSelectedRole) {
-    return null;
-  }
+  if (!hasSelectedRole) return null;
 
-  // 3. Authorization check
-  const isAuthorized = allowedRoles.includes(session.role);
+  const effectiveRoles = allowedRoles || (requiredRole ? [requiredRole] : []);
+  const isAuthorized = effectiveRoles.includes(session.role);
+  if (isAuthorized) return <>{children}</>;
 
-  if (isAuthorized) {
-    return <>{children}</>;
-  }
-
-  // 4. Unauthorized "Kirish Cheklangan" (Access Restricted) Screen
   const currentRoleMeta = ROLE_METAS[session.role] || ROLE_METAS.citizen;
   const targetPath = fallbackPath || currentRoleMeta.primaryPath;
-  const allowedNames = allowedRoles.map((r) => ROLE_METAS[r]?.name || r).join(', ');
+  const allowedNames = effectiveRoles.map((r) => ROLE_METAS[r]?.name || r).join(', ');
 
   return (
     <div className="min-h-[70vh] flex items-center justify-center p-4 sm:p-6 animate-fade-in">
       <div className="relative w-full max-w-lg bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl p-6 sm:p-8 text-center text-zinc-100">
-        {/* Top Security Badge */}
         <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-400 text-xs font-medium mb-5">
           <AlertOctagon className="w-3.5 h-3.5 text-zinc-400" />
           <span>Kirish Cheklangan (403)</span>
         </div>
 
-        {/* Warning Icon */}
         <div className="w-14 h-14 mx-auto rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 flex items-center justify-center mb-4">
           <ShieldAlert className="w-7 h-7 text-zinc-300" />
         </div>
 
-        {/* Heading & Subtitle */}
         <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white mb-2">
           Ushbu sahifaga kirish cheklangan
         </h2>
         <p className="text-xs text-zinc-400 mb-6 leading-relaxed">
-          Ushbu bo&apos;limdan foydalanish uchun vazirlik xodimi huquqi talab etiladi.
+          Ushbu bo&apos;limdan foydalanish uchun tegishli rol huquqi talab etiladi.
         </p>
 
-        {/* Role Comparison Details Box */}
         <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 mb-6 text-left space-y-2.5 text-xs">
           <div className="flex items-center justify-between">
             <span className="text-zinc-500">Sizning joriy rolingiz:</span>
@@ -116,7 +114,6 @@ export default function RoleProtectedPage({
           </div>
         </div>
 
-        {/* Action Buttons */}
         <div className="space-y-2.5">
           <button
             onClick={() => router.push(targetPath)}

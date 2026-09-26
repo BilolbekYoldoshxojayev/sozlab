@@ -2,7 +2,7 @@
 
 ## Executive Summary
 This plan addresses the three core requirements specified for **SözLab (Oliy ta'lim, fan va innovatsiyalar vazirligi ovozli call-markazi)**:
-1. **Dual-AI Architecture (Aisha AI Primary)**: Integrate **Aisha AI API** (`https://back.aisha.group`) using the provided key (`vlk_Iyeis6LM8pFCI0aMVTbeXUeJqpL_3GMhgAXmMLMAwpI`) as the prioritized primary engine for Uzbek speech synthesis (TTS with `Gulnoza` voice model) and speech-to-text (STT), while seamlessly orchestrating Google Gemini 2.5 and Edge-TTS as the high-intelligence dialog and resilient fallback engine.
+1. **Dual-AI Architecture (Aisha AI Primary)**: Integrate **Aisha AI API** (`https://back.aisha.group`) using the provided key (`vlk_REDACTED_API_KEY`) as the prioritized primary engine for Uzbek speech synthesis (TTS with `Gulnoza` voice model) and speech-to-text (STT), while seamlessly orchestrating Google Gemini 2.5 and Edge-TTS as the high-intelligence dialog and resilient fallback engine.
 2. **Strict Role-Based Page Restrictions**: Enforce client and route-level protection so that users in one role (e.g. Citizen) cannot access or view portals intended for other roles (Operator `/operator`, Admin `/admin`, Analytics `/analytics`), paired with dynamic role-filtered navigation.
 3. **Copy Streamlining (Make Website Less Wordy)**: Refactor verbose, bureaucratic paragraphs and hackathon fluff across all frontend pages into punchy, high-impact, modern enterprise UI copy.
 
@@ -61,7 +61,7 @@ flowchart TD
 ### Component 1: Dual-AI Engine with Aisha AI Prioritization
 - **Target Files**:
   - `backend/app/core/config.py`: Add `AISHA_API_KEY`, `AISHA_BASE_URL`, `PRIMARY_TTS_ENGINE`, `PRIMARY_STT_ENGINE`.
-  - `backend/.env`: Persist `AISHA_API_KEY=vlk_Iyeis6LM8pFCI0aMVTbeXUeJqpL_3GMhgAXmMLMAwpI`, `AISHA_BASE_URL=https://back.aisha.group`.
+  - `backend/.env`: Persist `AISHA_API_KEY=vlk_REDACTED_API_KEY`, `AISHA_BASE_URL=https://back.aisha.group`.
   - `backend/app/services/aisha_service.py` *(New)*:
     - `synthesize_speech(text, model="Gulnoza", mood="Neutral", speed=1.0)`: Calls `POST /api/v1/tts/post/` with `X-Api-Key` header, caches downloaded audio locally, returns audio path.
     - `transcribe_audio(file_bytes, filename)`: Calls `POST /api/v1/stt/post/` with `X-Api-Key`.

@@ -1,12 +1,25 @@
-## READY
-
 ## IN PROGRESS
+### Milestone 15: Initial Greeting Fix, Hands-Free VAD, Cyrillic STT Converter, Plain Text TTS Normalizer, CapCut Beat Markers for Admin, and Operator Elimination
+- [ ] **Task 15.1 [Initial Greeting Fix]**: Remove auto-greeting on call creation in `call_manager.py`, `calls.py`, `CallSimulator.tsx`, and `chat/page.tsx` so system waits for user input.
+- [ ] **Task 15.2 [Cyrillic STT Converter]**: Implement `cyrillic_to_latin_uzbek` in `uzbek_text_normalizer.py` and apply in `stt_service.py` & `ai_dialog.py` so Cyrillic speech matches legal keywords.
+- [ ] **Task 15.3 [Number & Modda Normalizer + Symbol Stripping]**: Convert `44-modda` -> `qirq to'rtinchi modda` and strip all asterisks (`*`) and symbols from LLM outputs for TTS.
+- [ ] **Task 15.4 [Hands-Free VAD Audio Recording]**: Implement auto-silence detection in `CallSimulator.tsx` using Web Audio AnalyserNode (1.2s quiet audio triggers send).
+- [ ] **Task 15.5 [Operator Elimination & Access Control]**: Delete `/operator` routes, remove operator from `useRole.tsx`, `Navbar.tsx`, `RoleGateModal.tsx`, `RoleProtectedPage.tsx`, and enforce strict 403 route protection.
+- [ ] **Task 15.6 [Admin CapCut Timeline Beat Markers & Audio Player]**: Implement interactive question timeline beat markers and live transcript viewer in `app/admin/page.tsx`.
+- [ ] **Task 15.7 [Testing & Build Verification]**: Run `pytest` backend tests and `npm run build` frontend build.
 
-## BLOCKED
 
 ## REVIEW
 
 ## DONE
+- [x] Task 14.1 [Database & Knowledge Base]: Ingest 50-page Constitution Legal Encyclopedia (`Ozbekiston_Konstitutsiyasi_Talim_Moddalari_50_Sahifa.json`) into backend knowledge search index (`backend/app/data/constitution_50_loader.py` & `knowledge_base.py`).
+- [x] Task 14.2 [STT & Turn Logic]: Fix empty audio / silent turn greeting bug in `calls.py` and `ai_dialog.py` so system never auto-greets with "Va alaykum assalom" on silence.
+- [x] Task 14.3 [Uzbek TTS Normalizer]: Implement `uzbek_text_normalizer.py` for Roman numerals (`I`, `II`, `III` -> `birinchi`, `ikkinchi`), ordinal fix (`1-chi` -> `birinchi`), and `X` sound pronunciation in `tts_service.py` & `voicelab_service.py`.
+- [x] Task 14.4 [LLM Orchestrator & Complete Text]: Increase `max_tokens` to 1024 across Groq, Gemini, Cloudflare, Mistral, and Cerebras in `llm_orchestrator.py` to prevent response cutoffs.
+- [x] Task 14.5 [Human Operator System]: Implement `operator_manager.py` with FIFO queue, operator online status, WebSocket queue position alerts, 3-second pre-call countdown warning, and live human-to-human audio/text stream in `calls.py` and `ws.py`.
+- [x] Task 14.6 [Frontend Operator Page & UI Cleanup]: Re-create `/operator` console with 3-second countdown alert & queue dashboard; simplify site navbar and pages to focus on core features (`/call`, `/chat`, `/history`, `/operator`).
+- [x] Task 14.7 [Verification & Testing]: Run backend unit tests (`pytest`), frontend production build (`npm run build`), and verify zero errors.
+
 - [x] Task 9.1: Frontend - Completely delete `app/operator/page.tsx`, `OperatorQueue.tsx`, `OperatorLiveCall.tsx`; clean `Navbar.tsx`, `useRole.tsx`, `RoleGateModal.tsx`, `RoleProtectedPage.tsx`
 - [x] Task 9.2: Backend - Remove operator fleet, queues, and handover logic from `call_manager.py`, `ws.py`, `calls.py`
 - [x] Task 9.3: Backend - Ingest all 50 FAQs and official legal encyclopedia from the 2 PDFs into `app/data/education_faq_50.py` and `app/data/education_legislation_encyclopedia.py`

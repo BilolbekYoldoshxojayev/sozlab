@@ -2,15 +2,130 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ==============================================================================
+   SÖZLAB JOYFUL 3-COLOR LIGHT DESIGN SYSTEM
+   3 Light, Joyful & Positive Colors + Shades:
+   1. Sky Blue (#2563EB, #DBEAFE, #EFF6FF, #1E40AF)
+   2. Mint Emerald (#10B981, #D1FAE5, #ECFDF5, #047857)
+   3. Sun Amber (#F59E0B, #FEF3C7, #FFFBEB, #B45309)
+   Background: #F8FAFC / #FFFFFF
+   ============================================================================== */
+
 :root {
-  --primary: #0b2b50;
-  --primary-foreground: #ffffff;
+  /* Color 1: Sky Blue */
+  --c-blue-primary: #2563EB;
+  --c-blue-hover: #1D4ED8;
+  --c-blue-light: #DBEAFE;
+  --c-blue-subtle: #EFF6FF;
+  --c-blue-dark: #1E40AF;
+
+  /* Color 2: Mint Emerald */
+  --c-mint-primary: #10B981;
+  --c-mint-hover: #059669;
+  --c-mint-light: #D1FAE5;
+  --c-mint-subtle: #ECFDF5;
+  --c-mint-dark: #047857;
+
+  /* Color 3: Sun Amber */
+  --c-amber-primary: #F59E0B;
+  --c-amber-hover: #D97706;
+  --c-amber-light: #FEF3C7;
+  --c-amber-subtle: #FFFBEB;
+  --c-amber-dark: #B45309;
+
+  /* Semantic Mappings */
+  --bg-app: #F8FAFC;
+  --bg-card: #FFFFFF;
+  --bg-subtle: #F1F5F9;
+  --border-card: #E2E8F0;
+  --border-subtle: #CBD5E1;
+  
+  --text-primary: #0F172A;
+  --text-secondary: #334155;
+  --text-muted: #64748B;
+  
+  --accent-cta: var(--c-blue-primary);
+  --accent-cta-hover: var(--c-blue-hover);
+  --accent-mint: var(--c-mint-primary);
+  --accent-amber: var(--c-amber-primary);
 }
 
 body {
-  color: #0f172a;
-  background: #f8fafc;
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  min-height: 100vh;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  overflow-x: hidden;
+}
+
+/* Custom design system cards and borders */
+.sozlab-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-card);
+  color: var(--text-primary);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.04), 0 2px 4px -2px rgba(0, 0, 0, 0.02);
+  transition: all 0.2s ease;
+}
+
+.sozlab-card:hover {
+  border-color: var(--c-blue-primary);
+  box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.08);
+}
+
+.sozlab-subtle {
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+}
+
+.sozlab-btn-primary {
+  background-color: var(--accent-cta);
+  color: #FFFFFF;
+  transition: all 0.15s ease;
+}
+
+.sozlab-btn-primary:hover {
+  background-color: var(--accent-cta-hover);
+}
+
+/* Transcript Entrance: slide in and stay 100% visible */
+@keyframes transcriptEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(24px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0px) scale(1);
+  }
+}
+
+.animate-transcript-enter {
+  animation: transcriptEnter 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Transcript Exit: trigger only after speech concludes */
+@keyframes transcriptExit {
+  0% {
+    opacity: 1;
+    transform: translateY(0px) scale(1);
+  }
+  70% {
+    opacity: 0.95;
+    transform: translateY(-35px) scale(0.98);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-80px) scale(0.92);
+  }
+}
+
+.animate-transcript-exit {
+  animation: transcriptExit 3.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Backward compatibility */
+.animate-float-up-fade {
+  animation: transcriptEnter 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 /* Custom scrollbars */
@@ -19,12 +134,12 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: #F1F5F9;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #CBD5E1;
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #94A3B8;
 }

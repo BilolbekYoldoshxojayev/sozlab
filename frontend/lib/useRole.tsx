@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 
-export type UserRole = 'citizen' | 'admin';
+export type UserRole = 'citizen' | 'admin' | 'operator';
 
 export interface UserSession {
   role: UserRole;
@@ -62,7 +62,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
         setHasSelectedRole(true);
       }
     } catch {
-      // fallback to default
+      // fallback
     } finally {
       setIsReady(true);
     }
@@ -72,41 +72,28 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     setSession(newSession);
     try {
       localStorage.setItem('sozlab_user_session', JSON.stringify(newSession));
-    } catch {
-      // ignore
-    }
+    } catch {}
   };
 
   const setRole = (role: UserRole) => {
-    const updated: UserSession = {
-      ...session,
-      role,
-    };
+    const updated: UserSession = { ...session, role };
     saveSession(updated);
     try {
       localStorage.setItem('sozlab_role_selected', 'true');
-    } catch {
-      // ignore
-    }
+    } catch {}
     setHasSelectedRole(true);
     setIsRoleGateOpen(false);
   };
 
   const setCitizenProfile = (name: string, phone: string) => {
-    const updated: UserSession = {
-      ...session,
-      citizenName: name,
-      citizenPhone: phone,
-    };
+    const updated: UserSession = { ...session, citizenName: name, citizenPhone: phone };
     saveSession(updated);
   };
 
   const logout = () => {
     try {
       localStorage.removeItem('sozlab_role_selected');
-    } catch {
-      // ignore
-    }
+    } catch {}
     setHasSelectedRole(false);
     saveSession(defaultSession);
     setIsRoleGateOpen(true);
@@ -118,16 +105,8 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   return (
     <RoleContext.Provider
       value={{
-        session,
-        setRole,
-        setCitizenProfile,
-        logout,
-        isReady,
-        isRoleGateOpen,
-        setIsRoleGateOpen,
-        openRoleGate,
-        closeRoleGate,
-        hasSelectedRole,
+        session, setRole, setCitizenProfile, logout, isReady,
+        isRoleGateOpen, setIsRoleGateOpen, openRoleGate, closeRoleGate, hasSelectedRole,
       }}
     >
       {children}

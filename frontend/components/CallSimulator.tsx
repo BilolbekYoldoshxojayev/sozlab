@@ -3,86 +3,164 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Mic, MicOff, PhoneOff, PhoneCall, Volume2, VolumeX,
-  Sparkles, RefreshCw, Send, ArrowRight, ShieldCheck,
-  BookOpen, ExternalLink, HelpCircle
+  PhoneCall, PhoneOff, Volume2, VolumeX, ShieldCheck,
+  User, Sparkles, MessageSquare, ArrowRight, BookmarkCheck, CheckCircle2,
+  Mic, MicOff, Send, Radio
 } from 'lucide-react';
 import { CallRecord, Message } from '@/lib/types';
 import {
-  startNewCall, sendDialogTurn, sendAudioTurn,
-  completeCall, getAudioFullUrl, getCallWebSocketUrl
+  startNewCall, sendAudioTurn, completeCall,
+  getAudioFullUrl, getCallWebSocketUrl, sendDialogTurn
 } from '@/lib/api';
 import { AudioRecorder } from '@/lib/audioRecorder';
 import { useRole } from '@/lib/useRole';
 
-const OFFICIAL_50_FAQ_PROMPTS = [
-  {
-    category: 'Maktab & Pul Yig\'ish (Savol 2)',
-    text: "Maktabda o'quvchilardan yoki ota-onalardan pul yig'ish (fond, ta'mirlash) qonuniymi?",
-  },
-  {
-    category: 'Pedagoglar Huquqi (Savol 9)',
-    text: "O'qituvchini majburiy mehnatga (ko'cha tozalash, hashar, obuna) jalb qilish mumkinmi?",
-  },
-  {
-    category: 'Magistratura Kontrakti (Savol 20)',
-    text: "Davlat OTMlari magistraturasida o'qiyotgan xotin-qizlar kontrakti qanday qoplanadi?",
-  },
-  {
-    category: '1-Sinfga Qabul (Savol 1)',
-    text: "Bolani 1-sinfga qabul qilish tartibi va yoshi qanday belgilangan?",
-  },
-  {
-    category: 'Yangi Grant Tizimi (Savol 19)',
-    text: "2024–2026-yillarda davlat grantlari har yili GPA reytingi bo'yicha qanday qayta taqsimlanadi?",
-  },
-  {
-    category: 'Talaba Ijarasi (Savol 23)',
-    text: "Ijara xonadonida yashaydigan talabalarga davlat tomonidan 50 foiz kompensatsiya qanday to'lanadi?",
-  },
-  {
-    category: '1 Stavka Dars Soati (Savol 33)',
-    text: "Umumta'lim maktablarida o'qituvchilar uchun 1 stavka dars soati necha soat qilib belgilangan?",
-  },
-  {
-    category: 'Inklyuziv Ta\'lim (Savol 38)',
-    text: "Nogironligi bo'lgan bolalar oddiy umumta'lim maktablarida inklyuziv ta'lim ola biladimi?",
-  }
-];
+interface FloatingTranscriptItem {
+  id: string;
+  role: 'human' | 'ai';
+  text: string;
+  timestamp: string;
+  isFading?: boolean;
+}
 
 export default function CallSimulator() {
   const router = useRouter();
   const { session } = useRole();
   const [activeCall, setActiveCall] = useState<CallRecord | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [floatingTranscripts, setFloatingTranscripts] = useState<FloatingTranscriptItem[]>([]);
   const [callDuration, setCallDuration] = useState(0);
   const [mode, setMode] = useState<'idle' | 'recording' | 'thinking' | 'speaking'>('idle');
   const [isMuted, setIsMuted] = useState(false);
-  const [wsConnected, setWsConnected] = useState(false);
-  const [audioInputLevel, setAudioInputLevel] = useState(0);
   const [micErrorMessage, setMicErrorMessage] = useState<string | null>(null);
-  const [isQuickPromptsOpen, setIsQuickPromptsOpen] = useState(false);
-  const [customInputText, setCustomInputText] = useState('');
-  const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [callContextSummary, setCallContextSummary] = useState<string | null>(null);
+  const [audioLevel, setAudioLevel] = useState(0);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const audioRecorderRef = useRef<AudioRecorder | null>(null);
 
-  // Initialize AudioRecorder
+  // Synchronized state refs for callbacks
+  const activeCallRef = useRef<CallRecord | null>(null);
+  const modeRef = useRef<'idle' | 'recording' | 'thinking' | 'speaking'>('idle');
+  const isMutedRef = useRef(false);
+  const hasSpokenRef = useRef(false);
+  const speechStartTimeRef = useRef(0);
+  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const ambientNoiseFloorRef = useRef(0.015);
+  const isSubmittingRef = useRef(false);
+  const lastPlayedAudioUrlRef = useRef<string | null>(null);
+  const fadeTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isFarewellPendingRef = useRef(false);
+
+  const isFarewellText = (text?: string): boolean => {
+    if (!text) return false;
+    const t = text.toLowerCase();
+    return (
+      t.includes('rahmat') ||
+      t.includes('raxmat') ||
+      t.includes('rahmad') ||
+      t.includes('raxmad') ||
+      t.includes('tashakkur') ||
+      t.includes('arzimaydi') ||
+      t.includes('salomat') ||
+      t.includes("sog' bo'ling") ||
+      t.includes('sog boling') ||
+      t.includes('sogʻ boʻling') ||
+      t.includes('xayr') ||
+      t.includes('xayir') ||
+      t.includes('minnatdor') ||
+      t.includes('yaxshi qoling')
+    );
+  };
+
+  // Keep refs up to date
+  useEffect(() => {
+    activeCallRef.current = activeCall;
+  }, [activeCall]);
+
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+
+  useEffect(() => {
+    isMutedRef.current = isMuted;
+  }, [isMuted]);
+
+  // Add floating transcript helper with strict deduplication
+  const addFloatingTranscript = (role: 'human' | 'ai', text: string) => {
+    if (!text || !text.trim()) return;
+    const cleanText = text.trim();
+
+    if (fadeTimerRef.current) {
+      clearTimeout(fadeTimerRef.current);
+      fadeTimerRef.current = null;
+    }
+
+    setFloatingTranscripts((prev) => {
+      // Check if recent transcript already has same role and text
+      const isDuplicate = prev.slice(-4).some((item) => item.role === role && item.text === cleanText);
+      if (isDuplicate) return prev;
+
+      const newItem: FloatingTranscriptItem = {
+        id: `tr-${Date.now()}-${Math.random()}`,
+        role,
+        text: cleanText,
+        timestamp: new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        isFading: false,
+      };
+
+      return [...prev.slice(-5).map((t) => ({ ...t, isFading: false })), newItem];
+    });
+  };
+
+  // Initialize AudioRecorder with responsive adaptive VAD
   useEffect(() => {
     audioRecorderRef.current = new AudioRecorder((level) => {
-      setAudioInputLevel(level);
+      setAudioLevel(Math.min(100, Math.round(level * 350)));
+
+      // Lock VAD if not in recording mode or already submitting or AI is speaking
+      if (modeRef.current !== 'recording' || isSubmittingRef.current) return;
+
+      // Track ambient baseline noise floor before user starts speaking
+      if (!hasSpokenRef.current) {
+        ambientNoiseFloorRef.current = Math.min(0.04, ambientNoiseFloorRef.current * 0.92 + level * 0.08);
+      }
+
+      // Balanced speech & silence thresholds prioritizing conversational quality
+      const SPEECH_TRIGGER = Math.max(0.034, ambientNoiseFloorRef.current * 1.45 + 0.008);
+      const SILENCE_DURATION_MS = 1200; // 1.2s balanced silence window for natural pauses
+
+      if (level > SPEECH_TRIGGER) {
+        if (!hasSpokenRef.current) {
+          hasSpokenRef.current = true;
+          speechStartTimeRef.current = Date.now();
+        }
+        // Cancel silence countdown when user resumes speaking
+        if (silenceTimerRef.current && level > SPEECH_TRIGGER * 1.2) {
+          clearTimeout(silenceTimerRef.current);
+          silenceTimerRef.current = null;
+        }
+      } else if (hasSpokenRef.current) {
+        // level <= SPEECH_TRIGGER: user is pausing or finished speaking
+        const spokenDuration = Date.now() - speechStartTimeRef.current;
+        if (spokenDuration > 450 && !silenceTimerRef.current) {
+          silenceTimerRef.current = setTimeout(() => {
+            stopRecordingAndSend();
+          }, SILENCE_DURATION_MS);
+        }
+      }
     });
 
     return () => {
-      if (audioRecorderRef.current) {
-        audioRecorderRef.current.cancel();
-      }
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+      if (audioRecorderRef.current) audioRecorderRef.current.cancel();
+      if (wsRef.current) wsRef.current.close();
     };
   }, []);
 
-  // Duration Timer
+  // Call duration timer
   useEffect(() => {
     let interval: NodeJS.Timeout | undefined;
     if (activeCall && activeCall.status !== 'completed') {
@@ -95,7 +173,7 @@ export default function CallSimulator() {
     };
   }, [activeCall?.status]);
 
-  // WebSocket Connection
+  // WebSocket connection for live messages
   useEffect(() => {
     if (!activeCall) return;
 
@@ -103,22 +181,29 @@ export default function CallSimulator() {
       const wsUrl = getCallWebSocketUrl(activeCall.id);
       const ws = new WebSocket(wsUrl);
 
-      ws.onopen = () => {
-        setWsConnected(true);
-      };
-
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
           if (data.type === 'ai_response') {
             const aiMsg = data.message;
-            setMessages((prev) => [...prev, aiMsg]);
-            setMode('speaking');
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === aiMsg.id)) return prev;
+              return [...prev, aiMsg];
+            });
+            addFloatingTranscript('ai', aiMsg.text);
 
-            if (aiMsg.audio_url && !isMuted) {
-              playAudioResponse(aiMsg.audio_url);
-            } else {
-              setTimeout(() => setMode('idle'), 2500);
+            const isWsFarewell = Boolean(
+              data.is_farewell ||
+              data.status === 'completed' ||
+              isFarewellText(aiMsg.text) ||
+              isFarewellPendingRef.current
+            );
+            if (isWsFarewell) {
+              isFarewellPendingRef.current = true;
+            }
+
+            if (aiMsg.audio_url && !isMutedRef.current) {
+              playAudioResponse(aiMsg.audio_url, isWsFarewell, "Fuqaro minnatdorchilik bildirib suhbatni yakunladi.");
             }
           } else if (data.type === 'new_message') {
             const msg = data.message;
@@ -126,59 +211,167 @@ export default function CallSimulator() {
               if (prev.some((m) => m.id === msg.id)) return prev;
               return [...prev, msg];
             });
+            const role = msg.role === 'citizen' || msg.role === 'user' ? 'human' : 'ai';
+            addFloatingTranscript(role, msg.text);
           } else if (data.type === 'ai_thinking') {
             setMode('thinking');
           } else if (data.type === 'call_completed') {
+            isFarewellPendingRef.current = true;
+            if (audioRecorderRef.current && audioRecorderRef.current.isRecording()) {
+              audioRecorderRef.current.stop().catch(() => {});
+            }
+            if (silenceTimerRef.current) {
+              clearTimeout(silenceTimerRef.current);
+              silenceTimerRef.current = null;
+            }
             setActiveCall((prev) => (prev ? { ...prev, status: 'completed' } : null));
-            setShowSummaryModal(true);
+            activeCallRef.current = null;
+            setCallContextSummary(data.summary || "Fuqaro minnatdorchilik bildirib suhbatni yakunladi.");
             setMode('idle');
+            modeRef.current = 'idle';
           }
         } catch {
           // ignore
         }
       };
 
-      ws.onerror = () => {
-        setWsConnected(false);
-      };
-
-      ws.onclose = () => {
-        setWsConnected(false);
-      };
-
       wsRef.current = ws;
-
       return () => {
         ws.close();
       };
     } catch {
       // ws fallback
     }
-  }, [activeCall?.id, isMuted]);
+  }, [activeCall?.id]);
 
-  // Play audio response with barge-in support
-  const playAudioResponse = (urlPath: string) => {
-    if (audioRef.current) {
-      audioRef.current.pause();
+  // Play audio response safely without interruption
+  const playAudioResponse = (urlPath: string, isFarewell: boolean = false, summaryText?: string) => {
+    if (!urlPath) return;
+
+    if (isFarewell || isFarewellPendingRef.current) {
+      isFarewellPendingRef.current = true;
     }
+
+    // Deduplicate if already playing this URL
+    if (lastPlayedAudioUrlRef.current === urlPath && modeRef.current === 'speaking') {
+      if (isFarewell) {
+        isFarewellPendingRef.current = true;
+      }
+      return;
+    }
+    lastPlayedAudioUrlRef.current = urlPath;
+
+    // Lock mode to speaking so microphone recording doesn't listen to AI output
+    setMode('speaking');
+    modeRef.current = 'speaking';
+
+    if (fadeTimerRef.current) {
+      clearTimeout(fadeTimerRef.current);
+      fadeTimerRef.current = null;
+    }
+    // Ensure all floating transcripts remain 100% visible while AI is speaking
+    setFloatingTranscripts((prev) => prev.map((t) => ({ ...t, isFading: false })));
+
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+
+    // Cancel any active microphone recording while AI speaks
+    if (audioRecorderRef.current && audioRecorderRef.current.isRecording()) {
+      audioRecorderRef.current.cancel();
+    }
+
     const fullUrl = getAudioFullUrl(urlPath);
-    const audio = new Audio(fullUrl);
-    audioRef.current = audio;
+    if (!audioRef.current) {
+      audioRef.current = new Audio();
+    }
+
+    const audio = audioRef.current;
+    audio.pause();
+    audio.currentTime = 0;
+    audio.src = fullUrl;
+
+    const finalizeCallIfFarewell = (): boolean => {
+      if (isFarewell || isFarewellPendingRef.current) {
+        isFarewellPendingRef.current = false;
+        if (audioRecorderRef.current && audioRecorderRef.current.isRecording()) {
+          audioRecorderRef.current.stop().catch(() => {});
+        }
+        if (silenceTimerRef.current) {
+          clearTimeout(silenceTimerRef.current);
+          silenceTimerRef.current = null;
+        }
+        setActiveCall((prev) => (prev ? { ...prev, status: 'completed' } : null));
+        activeCallRef.current = null;
+        setCallContextSummary(summaryText || "Fuqaro minnatdorchilik bildirib suhbatni yakunladi.");
+        return true;
+      }
+      return false;
+    };
 
     audio.onended = () => {
       setMode('idle');
+      modeRef.current = 'idle';
+
+      // Delay fade-out animation until 4 seconds after AI speech has concluded
+      if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+      fadeTimerRef.current = setTimeout(() => {
+        setFloatingTranscripts((prev) =>
+          prev.map((t) => ({ ...t, isFading: true }))
+        );
+      }, 4000);
+
+      if (finalizeCallIfFarewell()) {
+        return;
+      }
+
+      // After AI finishes speaking, pause briefly and auto-start hands-free recording for next question
+      setTimeout(() => {
+        startRecording();
+      }, 400);
     };
 
-    audio.onerror = () => {
+    audio.onerror = (e) => {
+      console.warn("Audio playback error:", e);
       setMode('idle');
+      modeRef.current = 'idle';
+
+      // Delay fade-out animation until 4 seconds after audio error
+      if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+      fadeTimerRef.current = setTimeout(() => {
+        setFloatingTranscripts((prev) =>
+          prev.map((t) => ({ ...t, isFading: true }))
+        );
+      }, 4000);
+
+      if (finalizeCallIfFarewell()) {
+        return;
+      }
+      setTimeout(() => startRecording(), 600);
     };
 
-    audio.play().catch(() => {
+    audio.play().catch((err) => {
+      console.warn("Audio play rejected by browser:", err);
       setMode('idle');
+      modeRef.current = 'idle';
+
+      // Delay fade-out animation until 4 seconds after audio rejection
+      if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+      fadeTimerRef.current = setTimeout(() => {
+        setFloatingTranscripts((prev) =>
+          prev.map((t) => ({ ...t, isFading: true }))
+        );
+      }, 4000);
+
+      if (finalizeCallIfFarewell()) {
+        return;
+      }
+      setTimeout(() => startRecording(), 600);
     });
   };
 
-  // Start Call
+  // Start Call (Green button)
   const handleStartCall = async () => {
     try {
       setMode('thinking');
@@ -186,497 +379,385 @@ export default function CallSimulator() {
       const citizenPhone = session.citizenPhone || '+998 (90) 123-45-67';
 
       const call = await startNewCall(citizenName, citizenPhone);
+      activeCallRef.current = call;
       setActiveCall(call);
       setMessages(call.messages || []);
+      setFloatingTranscripts([]);
+      if (fadeTimerRef.current) {
+        clearTimeout(fadeTimerRef.current);
+        fadeTimerRef.current = null;
+      }
       setCallDuration(0);
+      setCallContextSummary(null);
+      lastPlayedAudioUrlRef.current = null;
+      isFarewellPendingRef.current = false;
       setMode('idle');
 
-      // Synthesize initial greeting
-      const initMsg = call.messages?.[0];
-      if (initMsg?.text && !isMuted) {
-        setMode('speaking');
-        try {
-          const res = await sendDialogTurn(call.id, 'Assalomu alaykum', true, 'Gulnoza');
-          if (res.audio_url) {
-            playAudioResponse(res.audio_url);
-          } else {
-            setMode('idle');
-          }
-        } catch {
-          setMode('idle');
-        }
-      }
+      // Start recording immediately
+      await startRecording(call);
     } catch (err) {
       setMode('idle');
-      alert("Qo'ng'iroqni boshlab bo'lmadi. Server bilan aloqani tekshiring.");
+      alert("Qo'ng'iroqni boshlab bo'lmadi. Server aloqasini tekshiring.");
     }
   };
 
-  // End Call
+  // End Call (Red button)
   const handleEndCall = async () => {
-    if (!activeCall) return;
+    const currentCall = activeCallRef.current || activeCall;
+    if (!currentCall) return;
+
     try {
+      if (fadeTimerRef.current) {
+        clearTimeout(fadeTimerRef.current);
+        fadeTimerRef.current = null;
+      }
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
       if (audioRecorderRef.current && audioRecorderRef.current.isRecording()) {
-        await audioRecorderRef.current.stop();
+        await audioRecorderRef.current.stop().catch(() => {});
       }
       if (audioRef.current) {
         audioRef.current.pause();
       }
 
-      await completeCall(activeCall.id, "Muloqot fuqaro tomonidan yakunlandi.");
+      const summaryRes = await completeCall(currentCall.id, "Muloqot fuqaro tomonidan yakunlandi.");
       setActiveCall((prev) => (prev ? { ...prev, status: 'completed' } : null));
-      setShowSummaryModal(true);
+      activeCallRef.current = null;
+      setCallContextSummary(summaryRes?.resolution_summary || summaryRes?.summary || "Fuqaroga ta'lim qonunchiligi bo'yicha rasmiy maslahat berildi.");
       setMode('idle');
     } catch {
       setActiveCall((prev) => (prev ? { ...prev, status: 'completed' } : null));
-      setShowSummaryModal(true);
+      activeCallRef.current = null;
+      setCallContextSummary("Fuqaro murojaati bo'yicha ta'lim qonunchiligi maslahati yakunlandi.");
       setMode('idle');
     }
   };
 
-  // Microphone toggle (Barge-in supported: stops previous audio and immediately listens)
-  const toggleRecording = async () => {
-    if (!activeCall || activeCall.status === 'completed') return;
+  // Start hands-free recording
+  const startRecording = async (targetCall?: CallRecord) => {
+    const call = targetCall || activeCallRef.current;
+    if (!call || call.status === 'completed' || modeRef.current === 'speaking' || isFarewellPendingRef.current) return;
 
-    // Barge-in: interrupt playing audio
-    if (audioRef.current) {
-      audioRef.current.pause();
-    }
-
-    if (mode === 'recording') {
-      // Stop recording and send audio
-      setMode('thinking');
-      try {
-        if (!audioRecorderRef.current) throw new Error('Audio recorder unavailable');
-        const audioBlob = await audioRecorderRef.current.stop();
-        setAudioInputLevel(0);
-
-        if (audioBlob.size < 500) {
-          setMode('idle');
-          return;
-        }
-
-        const res = await sendAudioTurn(activeCall.id, audioBlob, true, 'Gulnoza');
-
-        if (res.transcribed_text) {
-          const userMsg: Message = {
-            id: `msg-${Date.now()}`,
-            role: 'citizen',
-            text: res.transcribed_text,
-            timestamp: new Date().toISOString(),
-          };
-          setMessages((prev) => [...prev, userMsg]);
-        }
-
-        if (res.ai_text) {
-          const aiMsg: Message = {
-            id: `ai-${Date.now()}`,
-            role: 'ai',
-            text: res.ai_text,
-            timestamp: new Date().toISOString(),
-            audio_url: res.audio_url,
-          };
-          setMessages((prev) => [...prev, aiMsg]);
-        }
-
-        if (res.audio_url && !isMuted) {
-          setMode('speaking');
-          playAudioResponse(res.audio_url);
-        } else {
-          setMode('idle');
-        }
-      } catch (err: any) {
-        setMode('idle');
-        setMicErrorMessage(err.message || 'Ovoz yozishda xatolik');
-        setTimeout(() => setMicErrorMessage(null), 4000);
+    try {
+      setMicErrorMessage(null);
+      if (!audioRecorderRef.current) {
+        audioRecorderRef.current = new AudioRecorder();
       }
-    } else {
-      // Start recording
-      try {
-        setMicErrorMessage(null);
-        if (!audioRecorderRef.current) throw new Error('Audio recorder unavailable');
-        await audioRecorderRef.current.start();
-        setMode('recording');
-      } catch (err: any) {
-        setMode('idle');
-        setMicErrorMessage("Mikrofon ruxsati berilmadi. Iltimos, brauzerda mikrofonga ruxsat bering.");
-        setTimeout(() => setMicErrorMessage(null), 5000);
+      hasSpokenRef.current = false;
+      speechStartTimeRef.current = 0;
+      ambientNoiseFloorRef.current = 0.015;
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
       }
+      await audioRecorderRef.current.start();
+      setMode('recording');
+      modeRef.current = 'recording';
+    } catch (err: any) {
+      setMode('idle');
+      modeRef.current = 'idle';
+      setMicErrorMessage("Mikrofondan foydalanishga ruxsat bering.");
+      setTimeout(() => setMicErrorMessage(null), 5000);
     }
   };
 
-  // Text Prompt Send
-  const handleSendTextPrompt = async (textToSend: string) => {
-    if (!activeCall || activeCall.status === 'completed' || !textToSend.trim()) return;
+  // Stop recording & submit turn
+  const stopRecordingAndSend = async () => {
+    if (isSubmittingRef.current || modeRef.current !== 'recording') return;
+    isSubmittingRef.current = true;
 
-    // Barge-in: interrupt playing audio
-    if (audioRef.current) {
-      audioRef.current.pause();
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
     }
 
     setMode('thinking');
-    const promptText = textToSend.trim();
-    setCustomInputText('');
-
-    const userMsg: Message = {
-      id: `msg-${Date.now()}`,
-      role: 'citizen',
-      text: promptText,
-      timestamp: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, userMsg]);
+    modeRef.current = 'thinking';
 
     try {
-      const res = await sendDialogTurn(activeCall.id, promptText, true, 'Gulnoza');
+      if (!audioRecorderRef.current) throw new Error('Audio recorder unavailable');
+      const audioBlob = await audioRecorderRef.current.stop();
 
-      const aiMsg: Message = {
-        id: `ai-${Date.now()}`,
-        role: 'ai',
-        text: res.ai_text,
-        timestamp: new Date().toISOString(),
-        audio_url: res.audio_url,
-      };
-      setMessages((prev) => [...prev, aiMsg]);
+      const currentCall = activeCallRef.current || activeCall;
+      if (!currentCall || audioBlob.size < 500) {
+        setMode('idle');
+        modeRef.current = 'idle';
+        isSubmittingRef.current = false;
+        setTimeout(() => startRecording(), 400);
+        return;
+      }
 
-      if (res.audio_url && !isMuted) {
-        setMode('speaking');
-        playAudioResponse(res.audio_url);
+      const res = await sendAudioTurn(currentCall.id, audioBlob, true, 'Gulnoza');
+      const isFarewell = Boolean(
+        res.status === 'completed' ||
+        res.intent === 'Xayrlashuv' ||
+        isFarewellText(res.transcribed_text) ||
+        isFarewellText(res.ai_text)
+      );
+
+      if (isFarewell) {
+        isFarewellPendingRef.current = true;
+      }
+
+      if (res.transcribed_text && res.transcribed_text !== '(Tushunarsiz ovoz)') {
+        const userMsg: Message = {
+          id: `msg-${Date.now()}`,
+          role: 'citizen',
+          text: res.transcribed_text,
+          timestamp: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, userMsg]);
+        addFloatingTranscript('human', res.transcribed_text);
+      }
+
+      if (res.ai_text) {
+        const aiMsg: Message = {
+          id: `ai-${Date.now()}`,
+          role: 'ai',
+          text: res.ai_text,
+          timestamp: new Date().toISOString(),
+          audio_url: res.audio_url,
+        };
+        setMessages((prev) => [...prev, aiMsg]);
+        addFloatingTranscript('ai', res.ai_text);
+      }
+
+      if (res.audio_url && !isMutedRef.current) {
+        playAudioResponse(res.audio_url, isFarewell, "Fuqaro minnatdorchilik bildirib suhbatni yakunladi.");
+      } else if (isFarewell) {
+        isFarewellPendingRef.current = false;
+        if (audioRecorderRef.current && audioRecorderRef.current.isRecording()) {
+          audioRecorderRef.current.stop().catch(() => {});
+        }
+        if (silenceTimerRef.current) {
+          clearTimeout(silenceTimerRef.current);
+          silenceTimerRef.current = null;
+        }
+        setActiveCall((prev) => (prev ? { ...prev, status: 'completed' } : null));
+        activeCallRef.current = null;
+        setCallContextSummary("Fuqaro minnatdorchilik bildirib suhbatni yakunladi.");
+        setMode('idle');
+        modeRef.current = 'idle';
       } else {
         setMode('idle');
+        modeRef.current = 'idle';
+        if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+        fadeTimerRef.current = setTimeout(() => {
+          setFloatingTranscripts((prev) => prev.map((t) => ({ ...t, isFading: true })));
+        }, 4000);
+        setTimeout(() => startRecording(), 600);
       }
-    } catch {
+    } catch (err: any) {
       setMode('idle');
+      modeRef.current = 'idle';
+      setMicErrorMessage(err.message || 'Ovoz yuborishda xatolik yuz berdi');
+      setTimeout(() => setMicErrorMessage(null), 4000);
+      setTimeout(() => startRecording(), 800);
+    } finally {
+      isSubmittingRef.current = false;
     }
   };
 
-  // Format seconds to mm:ss
+  // Format seconds mm:ss
   const formatTime = (secs: number) => {
     const mins = Math.floor(secs / 60);
     const s = secs % 60;
     return `${mins.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  // Latest messages for subtitle display
-  const latestAiMessage = [...messages].reverse().find((m) => m.role === 'ai');
-  const latestCitizenMessage = [...messages].reverse().find((m) => m.role === 'citizen');
+  const isCallActive = !!(activeCall && activeCall.status !== 'completed');
 
   return (
-    <div className="relative h-[calc(100vh-4rem)] w-full overflow-hidden bg-zinc-950 text-zinc-100 flex flex-col justify-between select-none">
-      {/* Top Status Bar */}
-      <div className="w-full px-4 sm:px-8 py-3.5 border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur-md flex items-center justify-between z-20">
+    <div className="relative flex-1 w-full h-full bg-slate-50 flex flex-col justify-between overflow-hidden select-none pb-20">
+      <audio ref={audioRef} className="hidden" preload="auto" />
+
+      {/* Top Banner: User Profile Header */}
+      <div className="w-full bg-white border-b border-slate-200 px-4 sm:px-8 py-3 flex items-center justify-between shadow-2xs shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+          <div className="w-9 h-9 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold shadow-xs">
+            <User className="w-5 h-5" />
+          </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold tracking-wider text-zinc-200 uppercase">
-                1006 / 1007 Yagona Ovozli Markaz
+              <span className="text-sm font-extrabold text-slate-900">
+                {session.citizenName || 'Fuqaro Murojaatchi'}
               </span>
-              <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400 font-mono">
-                100% Avtonom AI
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                Ovozli Rejim
               </span>
             </div>
-            <p className="text-[11px] text-zinc-500 font-mono">
-              VoiceLab Studio • Gulnoza (O&apos;zbek) • 50 ta Rasmiy FAQ Baza
+            <p className="text-[11px] text-slate-500 font-medium">
+              SözLab Avtonom Ovozli Maslahat • Hands-Free VAD (1.4s)
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          {activeCall && activeCall.status !== 'completed' && (
-            <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-300">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+        {isCallActive && (
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 text-xs font-mono font-bold">
+              <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping" />
               <span>{formatTime(callDuration)}</span>
             </div>
-          )}
-
-          <button
-            onClick={() => setIsMuted(!isMuted)}
-            className={`p-2 rounded-lg border transition ${
-              isMuted
-                ? 'bg-zinc-800 border-zinc-700 text-zinc-400'
-                : 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:text-white'
-            }`}
-            title={isMuted ? "Ovozni yoqish" : "Ovozni o'chirish"}
-          >
-            {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-          </button>
-        </div>
-      </div>
-
-      {/* Main Center Stage: Acoustic Voice Orb & Real-Time Captions */}
-      <div className="flex-1 flex flex-col items-center justify-center px-4 relative z-10">
-        {!activeCall ? (
-          /* Idle Call Initiation Banner */
-          <div className="text-center max-w-lg mx-auto animate-fade-in">
-            <div className="w-20 h-20 mx-auto rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-200 mb-6 shadow-xl">
-              <PhoneCall className="w-10 h-10 text-zinc-200" />
-            </div>
-
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white mb-2">
-              SözLab Ovozli Maslahatchi
-            </h1>
-            <p className="text-xs sm:text-sm text-zinc-400 mb-8 leading-relaxed">
-              O&apos;zbekiston Respublikasi ta&apos;lim qonunchiligi (Maktab, Bog&apos;cha, OTM qabuli, Davlat grantlari, Pedagoglar huquqlari) bo&apos;yicha savollaringizga rasmiy moddalar bilan to&apos;g&apos;ridan-to&apos;g&apos;ri ovozli javob oling.
-            </p>
 
             <button
-              onClick={handleStartCall}
-              className="py-3.5 px-8 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-sm shadow-xl transition active:scale-95 flex items-center justify-center gap-2.5 mx-auto"
+              onClick={() => setIsMuted(!isMuted)}
+              className={`p-2 rounded-xl border transition ${
+                isMuted
+                  ? 'bg-amber-50 border-amber-200 text-amber-700'
+                  : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
+              }`}
+              title={isMuted ? "Ovozni yoqish" : "Ovozni o'chirish"}
             >
-              <PhoneCall className="w-4 h-4" />
-              <span>Qo&apos;ng&apos;iroqni boshlash</span>
+              {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
             </button>
-          </div>
-        ) : (
-          /* Live Acoustic Orb Experience */
-          <div className="flex flex-col items-center justify-center w-full max-w-2xl text-center">
-            {/* Precision Monochrome Acoustic Voice Orb */}
-            <div className="relative flex items-center justify-center w-64 h-64 sm:w-72 sm:h-72 my-4">
-              {/* Outer Acoustic Pulse Rings */}
-              <div
-                className={`absolute inset-0 rounded-full border border-zinc-800 transition-all duration-700 ${
-                  mode === 'recording'
-                    ? 'scale-110 border-emerald-500/40 bg-emerald-500/5'
-                    : mode === 'speaking'
-                    ? 'scale-105 border-zinc-700/80 bg-zinc-800/10'
-                    : 'scale-95 border-zinc-800/40'
-                }`}
-              />
-
-              <div
-                className={`absolute inset-6 rounded-full border border-zinc-800/80 transition-all duration-500 ${
-                  mode === 'recording'
-                    ? 'scale-105 border-emerald-500/60'
-                    : mode === 'thinking'
-                    ? 'rotate-180 border-dashed border-zinc-600'
-                    : 'scale-95 border-zinc-800/60'
-                }`}
-              />
-
-              {/* Core Orb Center */}
-              <div
-                className={`relative w-36 h-36 sm:w-40 sm:h-40 rounded-full border flex flex-col items-center justify-center transition-all duration-300 shadow-2xl cursor-pointer select-none ${
-                  mode === 'recording'
-                    ? 'bg-zinc-900 border-emerald-500 shadow-emerald-950/40 scale-105'
-                    : mode === 'thinking'
-                    ? 'bg-zinc-900 border-zinc-700 animate-pulse'
-                    : mode === 'speaking'
-                    ? 'bg-zinc-900 border-zinc-600 shadow-zinc-900/60'
-                    : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'
-                }`}
-                onClick={toggleRecording}
-              >
-                {mode === 'recording' ? (
-                  <Mic className="w-10 h-10 text-emerald-400 animate-pulse" />
-                ) : mode === 'thinking' ? (
-                  <RefreshCw className="w-8 h-8 text-zinc-400 animate-spin" />
-                ) : mode === 'speaking' ? (
-                  <Volume2 className="w-10 h-10 text-zinc-200" />
-                ) : (
-                  <Mic className="w-10 h-10 text-zinc-400" />
-                )}
-
-                <span className="text-[11px] font-medium tracking-wide mt-2 text-zinc-300">
-                  {mode === 'recording'
-                    ? 'Tinglamoqda...'
-                    : mode === 'thinking'
-                    ? 'Qidirmoqda...'
-                    : mode === 'speaking'
-                    ? 'Javob bermoqda'
-                    : 'Gapirish uchun bosing'}
-                </span>
-              </div>
-            </div>
-
-            {/* Error Notification if mic is blocked */}
-            {micErrorMessage && (
-              <div className="mb-4 px-3.5 py-1.5 rounded-lg bg-zinc-900 border border-red-500/30 text-red-400 text-xs">
-                {micErrorMessage}
-              </div>
-            )}
-
-            {/* Real-Time Subtitles & Legal Citations */}
-            <div className="w-full min-h-[110px] flex flex-col items-center justify-center mt-2 px-4">
-              {latestCitizenMessage && (
-                <div className="text-xs text-zinc-400 mb-2 font-mono flex items-center gap-1.5">
-                  <span className="text-zinc-500">Siz:</span>
-                  <span className="text-zinc-300 italic">&ldquo;{latestCitizenMessage.text}&rdquo;</span>
-                </div>
-              )}
-
-              {latestAiMessage ? (
-                <div className="max-w-xl animate-fade-in">
-                  <p className="text-sm sm:text-base font-medium text-zinc-100 leading-relaxed">
-                    {latestAiMessage.text}
-                  </p>
-
-                  {/* Interactive Legal Citation Badges */}
-                  <div className="flex flex-wrap items-center justify-center gap-1.5 mt-3">
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-[11px] font-mono text-zinc-400">
-                      <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                      <span>Rasmiy Ta&apos;lim Qonunchiligi</span>
-                    </span>
-                    <a
-                      href="https://lex.uz"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-[11px] font-mono text-zinc-400 hover:text-zinc-200 transition"
-                    >
-                      <span>lex.uz</span>
-                      <ExternalLink className="w-2.5 h-2.5" />
-                    </a>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-xs text-zinc-500 italic font-mono">
-                  Mikrofon tugmasini bosing yoki quyidagi rasmiy savollardan birini tanlang.
-                </p>
-              )}
-            </div>
           </div>
         )}
       </div>
 
-      {/* Bottom Interactive Control Center */}
-      {activeCall && activeCall.status !== 'completed' && (
-        <div className="w-full border-t border-zinc-800/80 bg-zinc-950/90 backdrop-blur-md px-4 sm:px-8 py-3.5 z-20">
-          <div className="max-w-3xl mx-auto flex flex-col gap-3">
-            {/* Quick Prompts Carousel Accordion */}
-            {isQuickPromptsOpen && (
-              <div className="p-3 bg-zinc-900/90 border border-zinc-800 rounded-xl mb-1 max-h-48 overflow-y-auto space-y-1.5 animate-fade-in">
-                <div className="flex items-center justify-between text-[11px] text-zinc-400 font-mono px-1 pb-1 border-b border-zinc-800">
-                  <span>TOP-50 RASMIY SAVOL-JAVOB BAZASI (YURIDIK TIZIM)</span>
-                  <span className="text-zinc-500">Bosish orqali yuborish</span>
+      {/* Main Center Call Stage & Spawning Live Transcripts */}
+      <div className="flex-1 max-w-3xl w-full mx-auto px-4 py-4 flex flex-col justify-between items-center relative overflow-hidden">
+        {/* Floating Transcripts Stream (Spawning from bottom, going up, fading out) */}
+        <div className="w-full flex-1 flex flex-col justify-end space-y-3 pointer-events-none mb-4 overflow-hidden min-h-[220px]">
+          {floatingTranscripts.map((item) => {
+            const isSpeaking = mode === 'speaking';
+            const isFrozen = isSpeaking && !item.isFading;
+            return (
+              <div
+                key={item.id}
+                className={`p-3.5 sm:p-4 rounded-2xl border shadow-md backdrop-blur-md transition-all select-text pointer-events-auto ${
+                  isFrozen
+                    ? 'animate-transcript-enter opacity-100 translate-y-0 scale-100 ring-1 ring-blue-400/40 shadow-blue-500/10'
+                    : item.isFading
+                    ? 'animate-transcript-exit'
+                    : 'animate-transcript-enter'
+                } ${
+                  item.role === 'human'
+                    ? 'bg-emerald-50/95 border-emerald-200 text-emerald-950 self-start max-w-[88%]'
+                    : 'bg-blue-50/95 border-blue-200 text-blue-950 self-end max-w-[88%]'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-4 mb-1">
+                  <span className={`text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 ${
+                    item.role === 'human' ? 'text-emerald-700' : 'text-blue-700'
+                  }`}>
+                    {item.role === 'human' ? '🗣️ Siz' : '🤖 AI Maslahatchi'}
+                    {isFrozen && item.role === 'ai' && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-ping" />
+                    )}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono">{item.timestamp}</span>
                 </div>
-                {OFFICIAL_50_FAQ_PROMPTS.map((item, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => {
-                      handleSendTextPrompt(item.text);
-                      setIsQuickPromptsOpen(false);
-                    }}
-                    className="w-full text-left p-2 rounded-lg bg-zinc-950/70 hover:bg-zinc-800 border border-zinc-800/80 text-xs text-zinc-300 transition flex items-center justify-between group"
-                  >
-                    <div>
-                      <span className="text-[10px] font-mono text-zinc-500 block uppercase">
-                        {item.category}
-                      </span>
-                      <span className="text-zinc-200 line-clamp-1 group-hover:text-white">
-                        {item.text}
-                      </span>
-                    </div>
-                    <ArrowRight className="w-3.5 h-3.5 text-zinc-500 group-hover:text-zinc-200 shrink-0 ml-2" />
-                  </button>
-                ))}
+                <p className="text-xs sm:text-sm font-semibold leading-relaxed">
+                  {item.text}
+                </p>
               </div>
-            )}
+            );
+          })}
 
-            {/* Input Bar & Controls */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setIsQuickPromptsOpen(!isQuickPromptsOpen)}
-                className={`px-3 py-2 rounded-lg border text-xs font-medium flex items-center gap-1.5 transition shrink-0 ${
-                  isQuickPromptsOpen
-                    ? 'bg-zinc-800 border-zinc-700 text-white'
-                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
-                }`}
-                title="Rasmiy savollar ro'yxati"
-              >
-                <BookOpen className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">50 FAQ</span>
-              </button>
-
-              <div className="relative flex-1">
-                <input
-                  type="text"
-                  value={customInputText}
-                  onChange={(e) => setCustomInputText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleSendTextPrompt(customInputText);
-                  }}
-                  placeholder="Yoki savolingizni matn ko'rinishida yozing..."
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3.5 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-700 font-sans"
-                />
-                {customInputText.trim() && (
-                  <button
-                    onClick={() => handleSendTextPrompt(customInputText)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-zinc-400 hover:text-white"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                  </button>
-                )}
+          {floatingTranscripts.length === 0 && !isCallActive && (
+            <div className="text-center my-auto py-6 animate-fade-in">
+              <div className="w-16 h-16 rounded-3xl bg-[#035B60]/10 border border-[#035B60]/20 text-[#035B60] mx-auto flex items-center justify-center mb-3 shadow-md shadow-[#035B60]/10">
+                <PhoneCall className="w-8 h-8 text-[#035B60]" />
               </div>
+              <h2 className="text-lg font-black text-slate-900">
+                SözLab Ovozli Muloqot
+              </h2>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1 leading-relaxed">
+                Tugmani bosib muloqotni boshlang. Savolingizni berganingizdan so&apos;ng javob va moddalar transkripti ekranda suzib chiqadi.
+              </p>
+            </div>
+          )}
+        </div>
 
-              {/* Main Mic Action Button */}
-              <button
-                onClick={toggleRecording}
-                className={`p-2.5 rounded-lg border transition flex items-center justify-center shrink-0 ${
-                  mode === 'recording'
-                    ? 'bg-emerald-600 border-emerald-500 text-white animate-pulse'
-                    : 'bg-zinc-900 border-zinc-800 text-zinc-200 hover:border-zinc-700'
-                }`}
-                title={mode === 'recording' ? "To'xtatish va yuborish" : "Gapirish"}
-              >
-                {mode === 'recording' ? (
-                  <MicOff className="w-4 h-4 text-white" />
-                ) : (
-                  <Mic className="w-4 h-4 text-zinc-300" />
-                )}
-              </button>
+        {/* Error notice if microphone blocked */}
+        {micErrorMessage && (
+          <div className="mb-3 px-4 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold shadow-xs">
+            {micErrorMessage}
+          </div>
+        )}
+
+        {/* Action Controls */}
+        <div className="w-full max-w-xs flex flex-col items-center gap-3 shrink-0">
+          {!isCallActive ? (
+            <button
+              onClick={handleStartCall}
+              className="w-full py-3.5 px-6 rounded-2xl bg-[#035B60] hover:bg-[#02373A] text-white font-black text-sm sm:text-base shadow-xl shadow-[#035B60]/25 transition active:scale-95 flex items-center justify-center gap-3"
+            >
+              <PhoneCall className="w-5 h-5 animate-bounce" />
+              <span>Qo&apos;ng&apos;iroqni Boshlash</span>
+            </button>
+          ) : (
+            <div className="w-full flex flex-col gap-2">
+              {/* Manual Speak/Send Action during Call */}
+              {mode === 'recording' && (
+                <button
+                  onClick={stopRecordingAndSend}
+                  className="w-full py-2.5 px-4 rounded-xl bg-[#FC6F01] hover:bg-[#E56300] text-white font-bold text-xs shadow-md shadow-[#FC6F01]/20 transition active:scale-95 flex items-center justify-center gap-2"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Gapirdim (Javobni Olish)</span>
+                </button>
+              )}
 
               {/* End Call Button */}
               <button
                 onClick={handleEndCall}
-                className="px-3.5 py-2 rounded-lg bg-red-950/80 hover:bg-red-900 border border-red-800/80 text-red-200 text-xs font-semibold flex items-center gap-1.5 transition shrink-0 active:scale-95"
-                title="Qo'ng'iroqni yakunlash"
+                className="w-full py-3 px-6 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-black text-sm shadow-xl shadow-rose-500/25 transition active:scale-95 flex items-center justify-center gap-2.5 animate-pulse"
               >
-                <PhoneOff className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Yakunlash</span>
+                <PhoneOff className="w-5 h-5" />
+                <span>Qo&apos;ng&apos;iroqni Yakunlash</span>
               </button>
             </div>
+          )}
+
+          {/* Status Indicator & Live Volume Meter */}
+          <div className="flex items-center gap-2 text-[11px] font-bold text-slate-500">
+            <span className={`w-2.5 h-2.5 rounded-full transition-colors ${
+              mode === 'recording'
+                ? 'bg-emerald-500 animate-ping'
+                : mode === 'thinking'
+                ? 'bg-blue-500 animate-pulse'
+                : mode === 'speaking'
+                ? 'bg-amber-500 animate-bounce'
+                : 'bg-slate-300'
+            }`} />
+            <span>
+              {mode === 'recording'
+                ? `Tinglamoqda (VAD ${audioLevel}%)`
+                : mode === 'thinking'
+                ? 'Qidirmoqda...'
+                : mode === 'speaking'
+                ? 'AI Javob bermoqda...'
+                : 'Tayyor'}
+            </span>
           </div>
         </div>
-      )}
 
-      {/* Post-Call Summary Modal */}
-      {showSummaryModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in">
-          <div className="w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl p-6 text-zinc-100 text-center">
-            <div className="w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-800 mx-auto flex items-center justify-center text-zinc-200 mb-4">
-              <ShieldCheck className="w-6 h-6 text-emerald-400" />
+        {/* Call Context Summary Card for User Follow-Up */}
+        {callContextSummary && (
+          <div className="w-full max-w-xl mt-4 p-4 rounded-2xl bg-white border border-blue-200 shadow-md text-slate-900 animate-fade-in shrink-0">
+            <div className="flex items-center gap-2 mb-1 text-blue-700">
+              <BookmarkCheck className="w-4 h-4 text-blue-600" />
+              <h3 className="font-extrabold text-xs">Muloqot Xulosasi</h3>
             </div>
-
-            <h3 className="text-lg font-bold text-white mb-1">
-              Muloqot Muvaffaqiyatli Yakunlandi
-            </h3>
-            <p className="text-xs text-zinc-400 mb-4">
-              Qo&apos;ng&apos;iroq davomiyligi: <strong className="text-zinc-200 font-mono">{formatTime(callDuration)}</strong>.
-              Suhbat rasmiy ta&apos;lim qonunchiligi arxivida saqlandi.
+            <p className="text-xs text-slate-700 leading-relaxed font-medium mb-2">
+              {callContextSummary}
             </p>
-
-            <div className="space-y-2">
+            <div className="flex items-center justify-between text-[10px] pt-2 border-t border-slate-100 text-slate-500">
+              <span>Saqlangan vaqt: {new Date().toLocaleTimeString('uz-UZ')}</span>
               <button
-                onClick={() => {
-                  setShowSummaryModal(false);
-                  setActiveCall(null);
-                  setMessages([]);
-                  setCallDuration(0);
-                }}
-                className="w-full py-2.5 px-4 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs transition"
+                onClick={() => router.push('/chat')}
+                className="text-blue-600 font-bold hover:underline flex items-center gap-1"
               >
-                Yangi Qo&apos;ng&apos;iroq Boshlash
-              </button>
-
-              <button
-                onClick={() => router.push('/history')}
-                className="w-full py-2 px-4 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 text-xs font-medium transition"
-              >
-                50 ta Rasmiy FAQ To&apos;plamini Ko&apos;rish
+                <span>AI Chatda davom ettirish</span>
+                <ArrowRight className="w-3 h-3" />
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

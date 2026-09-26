@@ -4,17 +4,32 @@ Handles AI voice calls, turns, audio synthesis, and admin ghost listeners.
 Zero operator queues or handovers.
 """
 
+import base64
 import uuid
-from typing import List, Optional
+import asyncio
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Query, Body, UploadFile, File, Form
+from pydantic.fields import FieldInfo
 from app.models.schemas import (
     CallRecord, DialogTurnRequest, DialogTurnResponse, AudioTurnResponse,
     MessageSchema, SpeakerRole, CallStatus
 )
+from app.core.config import settings
 from app.services.call_manager import call_manager
 from app.services.ai_dialog import dialog_manager
 from app.services.tts_service import tts_service
+from app.services.call_concatenator import call_concatenator
+from app.services.supabase_service import supabase_service
 from app.api.routes.ws import ws_manager
+
+# Ensure audio_markers and timeline_markers are supported on CallRecord model
+if "audio_markers" not in CallRecord.model_fields:
+    CallRecord.model_fields["audio_markers"] = FieldInfo(annotation=Optional[List[Dict[str, Any]]], default=None)
+    CallRecord.model_rebuild(force=True)
+
+if "timeline_markers" not in CallRecord.model_fields:
+    CallRecord.model_fields["timeline_markers"] = FieldInfo(annotation=Optional[List[Dict[str, Any]]], default=None)
+    CallRecord.model_rebuild(force=True)
 
 router = APIRouter(prefix="/calls", tags=["Calls"])
 
@@ -37,6 +52,11 @@ def get_calls(
         ]
     return calls
 
+@router.get("/operators")
+def get_operators():
+    """100% Autonomous AI architecture: returns empty list for backward compatibility."""
+    return []
+
 @router.post("", response_model=CallRecord)
 def start_call(
     name: str = Body("Fuqaro", embed=True),
@@ -56,6 +76,9 @@ async def process_call_turn(call_id: str, request: DialogTurnRequest):
     call = call_manager.get_call(call_id)
     if not call:
         raise HTTPException(status_code=404, detail="Qo'ng'iroq topilmadi")
+
+    print(f"\n============================================================")
+    print(f"[INCOMING-CALL-TURN] Call ID: {call_id} | Citizen: '{request.user_text}'")
 
     # Record citizen message
     user_msg_id = f"msg-{uuid.uuid4().hex[:6]}"
@@ -79,8 +102,12 @@ async def process_call_turn(call_id: str, request: DialogTurnRequest):
             )
             audio_url = url
             dialog_res.audio_url = url
+            print(f"[TTS-GENERATED] Audio URL: {audio_url}")
         except Exception as e:
-            print(f"[TTS Error in Turn]: {e}")
+            print(f"[TTS-ERROR]: {e}")
+
+    print(f"[AI-RESPONSE] Provider: {dialog_res.llm_provider_used} | Text: '{dialog_res.ai_text}'")
+    print(f"============================================================\n")
 
     # Record AI response message
     ai_msg_id = f"ai-{uuid.uuid4().hex[:6]}"
@@ -90,9 +117,20 @@ async def process_call_turn(call_id: str, request: DialogTurnRequest):
         text=dialog_res.ai_text,
         audio_url=audio_url,
         sentiment=dialog_res.sentiment,
-        detected_topic=dialog_res.topic
+        detected_topic=dialog_res.topic,
+        llm_provider_used=dialog_res.llm_provider_used,
+        metadata={"llm_provider_used": dialog_res.llm_provider_used}
     )
     call_manager.add_message(call_id, ai_msg)
+
+    # Stitch turns into a single continuous full-call audio recording
+    full_audio_url, markers = call_concatenator.concatenate_call_audio(call_id, call.messages)
+    if full_audio_url:
+        call.recording_url = full_audio_url
+        call.full_audio_url = full_audio_url
+        call.audio_markers = markers
+        call.timeline_markers = markers
+        call_manager.save_call_to_disk(call)
 
     # Check farewell
     if dialog_res.intent == "Xayrlashuv" or dialog_manager.is_farewell(request.user_text):
@@ -162,7 +200,20 @@ async def process_call_audio_turn(
     audio_bytes = await upload_file.read()
     mime_type = upload_file.content_type or "audio/wav"
 
-    # Transcribe via VoiceLab & evaluate through dialog manager
+    print(f"\n============================================================")
+    print(f"[INCOMING-AUDIO-TURN] Call ID: {call_id} | Bytes: {len(audio_bytes):,} ({mime_type})")
+
+    # Base64 data URI encoding for serverless persistence
+    audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
+    citizen_audio_data_uri = f"data:{mime_type};base64,{audio_b64}"
+
+    # Save citizen turn audio to disk & transcode to 24kHz mono WAV in parallel
+    turn_idx = len(call.messages)
+    citizen_wav_filename = f"call_{call_id}_turn_{turn_idx}_citizen.wav"
+    citizen_wav_path = settings.AUDIO_CACHE_DIR / citizen_wav_filename
+    transcode_task = asyncio.to_thread(call_concatenator.transcode_to_wav, audio_bytes, citizen_wav_path)
+
+    # Transcribe via VoiceLab & evaluate through dialog manager immediately without blocking
     transcribed_text, dialog_res = await dialog_manager.process_audio_turn(
         call_id=call_id,
         audio_bytes=audio_bytes,
@@ -170,14 +221,22 @@ async def process_call_audio_turn(
         voice_name=selected_voice or "Gulnoza"
     )
 
-    # Record citizen message with transcribed text
+    # Await transcode task before message creation & audio concatenation
+    await transcode_task
+
+    print(f"[TRANSCRIBED-CITIZEN-SPEECH]: '{transcribed_text}'")
+
+    # Record citizen message with transcribed text and audio URL
     user_msg_id = f"msg-{uuid.uuid4().hex[:6]}"
     user_msg = MessageSchema(
         id=user_msg_id,
         role=SpeakerRole.CITIZEN,
-        text=transcribed_text
+        text=transcribed_text,
+        audio_url=citizen_audio_data_uri,
+        metadata={"wav_file": citizen_wav_filename, "wav_url": f"/api/audio/{citizen_wav_filename}"}
     )
     call_manager.add_message(call_id, user_msg)
+    call.audio_url = citizen_audio_data_uri
 
     # Synthesize AI speech with VoiceLab
     audio_url = None
@@ -185,8 +244,12 @@ async def process_call_audio_turn(
         try:
             url, _, _ = await tts_service.generate_speech(dialog_res.ai_text, voice=selected_voice)
             audio_url = url
+            print(f"[AUDIO-SERVED] AI Voice URL: {audio_url}")
         except Exception as e:
-            print(f"[Audio Turn TTS Warning]: {e}")
+            print(f"[AUDIO-TURN-TTS-WARNING]: {e}")
+
+    print(f"[AI-RESPONSE] Provider: {dialog_res.llm_provider_used} | Text: '{dialog_res.ai_text}'")
+    print(f"============================================================\n")
 
     # Record AI message
     ai_msg_id = f"ai-{uuid.uuid4().hex[:6]}"
@@ -196,9 +259,20 @@ async def process_call_audio_turn(
         text=dialog_res.ai_text,
         audio_url=audio_url,
         sentiment=dialog_res.sentiment,
-        detected_topic=dialog_res.topic
+        detected_topic=dialog_res.topic,
+        llm_provider_used=dialog_res.llm_provider_used,
+        metadata={"llm_provider_used": dialog_res.llm_provider_used}
     )
     call_manager.add_message(call_id, ai_msg)
+
+    # Stitch turns into a single continuous full-call audio recording
+    full_audio_url, markers = await asyncio.to_thread(call_concatenator.concatenate_call_audio, call_id, call.messages)
+    if full_audio_url:
+        call.recording_url = full_audio_url
+        call.full_audio_url = full_audio_url
+        call.audio_markers = markers
+        call.timeline_markers = markers
+        call_manager.save_call_to_disk(call)
 
     # Check farewell
     if dialog_res.intent == "Xayrlashuv" or call.status == CallStatus.COMPLETED or dialog_manager.is_farewell(transcribed_text):
@@ -227,8 +301,18 @@ async def process_call_audio_turn(
         "type": "ai_response",
         "call_id": call_id,
         "message": ai_msg.model_dump(mode="json"),
-        "audio_url": audio_url
+        "audio_url": audio_url,
+        "is_farewell": current_status == "completed",
+        "status": current_status
     })
+
+    if current_status == "completed":
+        await ws_manager.broadcast_to_call(call_id, {
+            "type": "call_completed",
+            "call_id": call_id,
+            "status": "completed",
+            "summary": "Fuqaro minnatdorchilik bildirib suhbatni yakunladi."
+        })
 
     # Admin ghost listener mirroring
     await ws_manager.broadcast_to_admin_listeners(call_id, {
@@ -236,6 +320,7 @@ async def process_call_audio_turn(
         "call_id": call_id,
         "role": "citizen",
         "text": transcribed_text,
+        "audio_url": citizen_audio_data_uri,
         "timestamp": citizen_ts
     })
     await ws_manager.broadcast_to_admin_listeners(call_id, {
@@ -258,7 +343,8 @@ async def process_call_audio_turn(
         sentiment=dialog_res.sentiment,
         intent=dialog_res.intent,
         topic=dialog_res.topic,
-        requires_operator=False
+        requires_operator=False,
+        llm_provider_used=dialog_res.llm_provider_used
     )
 
 @router.post("/{call_id}/complete")
@@ -270,6 +356,15 @@ async def complete_call(
     if not call:
         raise HTTPException(status_code=404, detail="Qo'ng'iroq topilmadi")
     
+    # Consolidate continuous full-call audio recording
+    if call.messages:
+        full_audio_url, markers = call_concatenator.concatenate_call_audio(call_id, call.messages)
+        if full_audio_url:
+            call.recording_url = full_audio_url
+            call.full_audio_url = full_audio_url
+            call.audio_markers = markers
+            call.timeline_markers = markers
+
     await ws_manager.broadcast_to_call(call_id, {
         "type": "call_completed",
         "summary": summary

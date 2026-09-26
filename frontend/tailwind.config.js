@@ -18,6 +18,22 @@ module.exports = {
           light: "#F8FAFC",
           card: "#FFFFFF",
           border: "#E2E8F0"
+        },
+        sozlab: {
+          teal: "#035B60",
+          tealHover: "#024B4F",
+          tealDark: "#02373A",
+          tealDarker: "#012022",
+          tealBg: "#04181A",
+          tealSurface: "#07262A",
+          tealCard: "#092E33",
+          tealBorder: "#0D4349",
+          tealLight: "#0A7C83",
+          orange: "#FC6F01",
+          orangeHover: "#E56300",
+          orangeLight: "#FFF4EB",
+          orangeBorder: "#FD8C33",
+          orangeDark: "#BF5300",
         }
       },
       fontFamily: {
