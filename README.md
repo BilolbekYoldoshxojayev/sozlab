@@ -279,6 +279,42 @@ npm run build
 
 ---
 
+## 🔮 Kelajakdagi Rejalar va Davlat Integratsiyasi (Future Roadmap & Government Infrastructure)
+
+> ### ⚠️ Muhim Eslatma:
+> Ushbu taqdim etilgan tizim — **Umummilliy AI Xakaton (Namangan 2026)** doirasida ishlab chiqilgan **konseptual MVP / Demo** hisoblanadi. Unda mahsulotning arxitekturaviy imkoniyatlari, 0.35s tezlikdagi Multi-LLM kaskadi va audio pipeline samaradorligi ko'rgazmali tarzda isbotlab berildi.
+
+Kelajakda loyiha Oliy ta'lim, fan va innovatsiyalar vazirligi, Maktabgacha va maktab ta'limi vazirligi hamda boshqa davlat idoralari tizimiga to'liq joriy etilganda, quyidagi strategik yo'nalishlar amalga oshiriladi:
+
+### 1. 🏢 100% Mahalliy Serverlar (On-Premise & Air-Gapped Infrastructure)
+* **Axborot xavfsizligi va davlat siri:** Davlat organlari bilan ishlashda fuqarolarning shaxsiy ma'lumotlari (PII), davlat ta'lim sirlari va idoraviy hujjatlar xavfsizligi 1-o'rinda turadi.
+* Tizim **O'zbekiston Respublikasi hududidagi davlat ma'lumotlar markazlarida** (DXX, "Kiberxavfsizlik markazi" DUK hamda "Yagona integrator UZINFOCOM" talablariga to'liq mos ravishda) server klasterlarida lokal tarzda o'rnatiladi.
+* Tashqi internetga chiqmasdan, butunlay yopiq (Air-gapped) ichki tarmoqda avtonom ishlash qobiliyatiga ega bo'ladi.
+
+### 2. 🚫 Tashqi Xorijiy API'lardan To'liq Voz Kechish (Zero External API Policy)
+* **Demo bosqichi:** Hozirgi MVP versiyada tezkorlik uchun bulutli API'lar (Groq, Gemini, Cloudflare, Mistral) kaskadidan foydalanildi.
+* **Production bosqichi:** Haqiqiy davlat tizimida **hech qanday xorijiy yoki tashqi tijoriy API'lar ISHLATILMAYDI**. Barcha ma'lumotlar faqat o'zimizning ichki serverlarimizda aylanadi, tashqi xorijiy bulutlarga hech qanday bayt ma'lumot chiqib ketmaydi.
+
+### 3. 🧠 To'liq O'zimiz Ishlab Chiqqan Milliy AI Modellari (Proprietary In-House AI Models)
+* **Lokal Milliy LLM:** O'zbek tili adabiy qoidalari, davlat qonunchiligi atamalari va hududiy lahjalar asosida noldan saralangan va tozalangan korpusda o'qitilgan (fine-tuned) o'zimizning yopiq generativ tili modeli. Mahalliy GPU klasterlarida (vLLM / TensorRT-LLM) yuqori tezlikda ishlaydi.
+* **O'zimizning Ovoz Sintezi (On-Premise Neural TTS):** Mahalliy serverlarda ishlovchi, vazirlik rasmiy diktorlarining ovozidan yaratilgan 100% mustaqil, litsenziyaga qaram bo'lmagan neyron ovozlar.
+* **O'zimizning Nutqni Tanish (On-Premise Uzbek STT):** Shevalar, shovqinli telefon liniyalari va og'zaki nutq xatolarini yuqori aniqlikda tushunuvchi akustik va til modellari.
+
+### 4. 📞 Telekommunikatsiya va Haqiqiy GSM/SIP Aloqasi (E1/SIP Trunk)
+* Veb-audio simulyatoridan real telekom infratuzilmasiga o'tish: O'zbekiston telekom operatorlari (**Uztelecom, Ucell, Mobiuz, Beeline**) bilan to'g'ridan-to'g'ri E1 oqimlari va SIP Trunk orqali bog'lanish.
+* **1006** va **1007** ishonch telefonlariga tushgan real telefon qo'ng'iroqlarini Asterisk / FreePBX orqali AI platformasiga ulash.
+* Bir vaqtning o'zida 10,000+ ta parallel qo'ng'iroqlarni uzluksiz qabul qilish imkoniyati.
+
+### 5. 🔗 Yagona Davlat Axborot Tizimlari Bilan Yopiq Integratsiya
+* **my.gov.uz va my.maktab.uz:** Fuqaro qo'ng'iroq qilganda JSHSHIR (PINFL) orqali arizasining joriy holati (maktabga qabul, navbat) haqida bir zumda xabar berish.
+* **HEMIS:** Talabalarning shartnoma holati, akademik ko'rsatkichlari (GPA) va stipendiyalar bo'yicha shaxsiylashtirilgan ma'lumotlar.
+* **Bilimni baholash agentligi (DTM / my.uzbmb.uz):** Test sinovlari natijalari, mandat va kirish ballarini ovozli aytib berish.
+
+### 6. 🌐 Ko'p Tilli Davlat Xizmati
+* O'zbek tilidan tashqari **Qoraqalpoq tili** va **Rus tili**da ham to'liq qonuniy ovozli yordam ko'rsatish tizimini yo'lga qo'yish.
+
+---
+
 ## 👥 Loyiha Jamoasi (Team SözLab — Namangan AI Xakaton 2026)
 
 | F.I.Sh | Vazifasi va Mas'uliyati |
