@@ -38,18 +38,18 @@ class LLMOrchestrator:
         self._init_gemini()
 
     def _init_gemini(self):
-        if settings.GEMINI_API_KEY:
+        pass
+
+    def _get_gemini_clients(self) -> List[Any]:
+        clients = []
+        raw_keys = [k.strip() for k in settings.GEMINI_API_KEY.split(",") if k.strip()]
+        for k in raw_keys:
             try:
                 from google import genai
-                self._gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY)
-                logger.info("[LLMOrchestrator] Google GenAI client initialized.")
+                clients.append(genai.Client(api_key=k))
             except Exception as e:
                 logger.warning(f"[LLMOrchestrator] Gemini client init warning: {e}")
-
-    def _get_gemini_client(self):
-        if not self._gemini_client and settings.GEMINI_API_KEY:
-            self._init_gemini()
-        return self._gemini_client
+        return clients
 
     def build_system_instruction(self, legal_context: Any) -> str:
         """Construct authoritative legal system prompt grounded in Top-50 FAQs & Encyclopedia."""
@@ -166,47 +166,50 @@ class LLMOrchestrator:
         if not settings.GROQ_API_KEY:
             raise ValueError("GROQ_API_KEY not configured")
 
-        headers = {
-            "Authorization": f"Bearer {settings.GROQ_API_KEY}",
-            "Content-Type": "application/json"
-        }
-
+        raw_keys = [k.strip() for k in settings.GROQ_API_KEY.split(",") if k.strip()]
         models_to_try = [settings.GROQ_PRIMARY_MODEL, settings.GROQ_FALLBACK_MODEL]
         last_error = None
 
         async with httpx.AsyncClient(timeout=timeout) as client:
-            for model_name in models_to_try:
-                try:
-                    payload = {
-                        "model": model_name,
-                        "messages": messages,
-                        "temperature": 0.2,
-                        "max_tokens": 350
-                    }
+            for api_key in raw_keys:
+                headers = {
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json"
+                }
+                for model_name in models_to_try:
+                    try:
+                        payload = {
+                            "model": model_name,
+                            "messages": messages,
+                            "temperature": 0.2,
+                            "max_tokens": 350
+                        }
 
-                    response = await client.post(
-                        settings.GROQ_API_URL,
-                        headers=headers,
-                        json=payload
-                    )
-                    if response.status_code == 200:
-                        data = response.json()
-                        choices = data.get("choices", [])
-                        if choices:
-                            content = choices[0].get("message", {}).get("content", "")
-                            if content and content.strip():
-                                return content.strip()
-                    elif response.status_code == 429:
-                        raise httpx.HTTPStatusError("Groq 429 Rate Limit Exceeded", request=response.request, response=response)
-                    else:
-                        logger.debug(f"[LLMOrchestrator] Groq model '{model_name}' returned status {response.status_code}. Trying next model...")
-                except (httpx.HTTPStatusError, httpx.RequestError, asyncio.TimeoutError) as e:
-                    last_error = e
-                    if isinstance(e, httpx.HTTPStatusError) and e.response.status_code == 429:
-                        raise
-                    if isinstance(e, asyncio.TimeoutError):
-                        raise
-                    logger.debug(f"[LLMOrchestrator] Groq model '{model_name}' failed: {e}. Trying next model...")
+                        response = await client.post(
+                            settings.GROQ_API_URL,
+                            headers=headers,
+                            json=payload
+                        )
+                        if response.status_code == 200:
+                            data = response.json()
+                            choices = data.get("choices", [])
+                            if choices:
+                                content = choices[0].get("message", {}).get("content", "")
+                                if content and content.strip():
+                                    return content.strip()
+                        elif response.status_code == 429:
+                            logger.warning(f"[LLMOrchestrator] Groq key rate limited (429). Trying next key in pool...")
+                            break
+                        else:
+                            logger.debug(f"[LLMOrchestrator] Groq model '{model_name}' returned status {response.status_code}. Trying next model...")
+                    except (httpx.HTTPStatusError, httpx.RequestError, asyncio.TimeoutError) as e:
+                        last_error = e
+                        if isinstance(e, httpx.HTTPStatusError) and e.response.status_code == 429:
+                            logger.warning(f"[LLMOrchestrator] Groq key rate limited (429). Trying next key in pool...")
+                            break
+                        if isinstance(e, asyncio.TimeoutError):
+                            break
+                        logger.debug(f"[LLMOrchestrator] Groq model '{model_name}' failed: {e}. Trying next model...")
 
         raise last_error or RuntimeError("Groq API returned empty response")
 
@@ -216,39 +219,45 @@ class LLMOrchestrator:
         system_instruction: str,
         timeout: float
     ) -> str:
-        """Rank 3: Google Gemini (gemini-2.5-flash / gemini-3.8-flash) via google.genai."""
+        """Rank 3: Google Gemini (gemini-3.8-flash) via google.genai with key pool & thinking disabled."""
         if not settings.GEMINI_API_KEY:
             raise ValueError("GEMINI_API_KEY not configured")
 
-        client = self._get_gemini_client()
-        if not client:
-            raise RuntimeError("Gemini client could not be initialized")
+        clients = self._get_gemini_clients()
+        if not clients:
+            raise RuntimeError("No valid Gemini clients in pool")
 
-        models_to_try = [settings.GEMINI_MODEL, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
-        # Deduplicate while preserving order
+        models_to_try = [settings.GEMINI_MODEL, "gemini-3.8-flash"]
         seen = set()
         dedup_models = [m for m in models_to_try if m and not (m in seen or seen.add(m))]
 
         last_error = None
-        for m_name in dedup_models:
-            try:
-                def _sync_call(target_model=m_name):
-                    return client.models.generate_content(
-                        model=target_model,
-                        contents=user_text,
-                        config={"system_instruction": system_instruction, "temperature": 0.2, "max_output_tokens": 350}
-                    )
+        for client in clients:
+            for m_name in dedup_models:
+                try:
+                    def _sync_call(target_model=m_name, target_client=client):
+                        config = {
+                            "system_instruction": system_instruction,
+                            "temperature": 0.2,
+                            "max_output_tokens": 1200,
+                            "thinking_config": {"thinking_budget": 0}
+                        }
+                        return target_client.models.generate_content(
+                            model=target_model,
+                            contents=user_text,
+                            config=config
+                        )
 
-                response = await asyncio.wait_for(
-                    asyncio.to_thread(_sync_call),
-                    timeout=timeout
-                )
-                if response and response.text and response.text.strip():
-                    return response.text.strip()
-            except Exception as e:
-                last_error = e
-                logger.warning(f"[LLMOrchestrator] Gemini model '{m_name}' failed or busy: {e}. Trying fallback model...")
-                continue
+                    response = await asyncio.wait_for(
+                        asyncio.to_thread(_sync_call),
+                        timeout=timeout
+                    )
+                    if response and response.text and response.text.strip():
+                        return response.text.strip()
+                except Exception as e:
+                    last_error = e
+                    logger.warning(f"[LLMOrchestrator] Gemini model '{m_name}' with key failed/busy: {e}. Trying next key/model...")
+                    continue
 
         raise last_error or RuntimeError("Gemini returned empty response")
 
