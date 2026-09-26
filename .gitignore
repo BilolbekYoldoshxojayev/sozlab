@@ -55,3 +55,6 @@ backend/data/
 
 # TypeScript build info
 *.tsbuildinfo
+
+# Internal team guides
+team_guides/
