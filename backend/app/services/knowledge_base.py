@@ -37,7 +37,8 @@ OUT_OF_SCOPE_ROOTS = {
 # Comprehensive educational keywords, stems & STT phonetic variants
 EDUCATION_SCOPE_KEYWORDS = {
     # Schools & Preschools
-    "maktab", "maktablar", "maktabga", "sinf", "sinflar", "1-sinf", "birinchi sinf",
+    "maktab", "maktablar", "maktabga", "maktabka", "makitap", "makitapke", "sinf", "sinflar", "1-sinf", "birinchi sinf",
+    "kirish", "kirish yoshi", "qabul yoshi",
     "o'quvchi", "o'quvchilar", "oquvchi", "oquvchilar", "dars", "darslar", "darslik", "darsliklar",
     "bog'cha", "bogcha", "bog'chaga", "tarbiyachi", "tarbiyachilar", "maktabgacha",
     "forma", "maktab formasi", "kitob", "mashq daftari", "bepul", "pullik", "remont", "ta'mirlash", "fond",
@@ -83,7 +84,8 @@ def is_in_educational_scope(query: str) -> bool:
     """
     Determines if query falls under education legislation, FAQs, or 1006/1007 helpline competence.
     """
-    q = query.lower().strip()
+    from app.services.uzbek_text_normalizer import cyrillic_to_latin_uzbek
+    q = cyrillic_to_latin_uzbek(query).lower().strip()
     if not q or len(q) < 2:
         return False
 
@@ -135,8 +137,13 @@ def get_complete_legal_context(query: str, max_faqs: int = 3, max_articles: int 
     articles = search_encyclopedia(query, limit=max_articles)
 
     # Fallback search on common synonym terms (e.g. byudjet -> grant, kontakt -> kontrakt)
-    q_low = query.lower()
-    if not faqs and ("byudjet" in q_low or "budjet" in q_low or "grant" in q_low):
+    from app.services.uzbek_text_normalizer import cyrillic_to_latin_uzbek
+    q_low = cyrillic_to_latin_uzbek(query).lower()
+
+    if ("maktab" in q_low or "makitap" in q_low or "sinf" in q_low) and ("yosh" in q_low or "kirish" in q_low or "qabul" in q_low):
+        faqs = search_faq_items("1-sinfga qabul yoshi", limit=max_faqs)
+        articles = [a for a in articles if "pensiya" not in a.get("summary", "").lower()]
+    elif not faqs and ("byudjet" in q_low or "budjet" in q_low or "grant" in q_low):
         faqs = search_faq_items("davlat granti stipendiya", limit=max_faqs)
     elif not faqs and ("kontakt" in q_low or "kontrakt" in q_low or "shartnoma" in q_low or "to'lov" in q_low):
         faqs = search_faq_items("to'lov-kontrakt magistratura", limit=max_faqs)

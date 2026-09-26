@@ -224,20 +224,33 @@ class LLMOrchestrator:
         if not client:
             raise RuntimeError("Gemini client could not be initialized")
 
-        def _sync_call():
-            return client.models.generate_content(
-                model=settings.GEMINI_MODEL,
-                contents=user_text,
-                config={"system_instruction": system_instruction, "temperature": 0.2, "max_output_tokens": 350}
-            )
+        models_to_try = [settings.GEMINI_MODEL, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+        # Deduplicate while preserving order
+        seen = set()
+        dedup_models = [m for m in models_to_try if m and not (m in seen or seen.add(m))]
 
-        response = await asyncio.wait_for(
-            asyncio.to_thread(_sync_call),
-            timeout=timeout
-        )
-        if response and response.text and response.text.strip():
-            return response.text.strip()
-        raise RuntimeError("Gemini returned empty response")
+        last_error = None
+        for m_name in dedup_models:
+            try:
+                def _sync_call(target_model=m_name):
+                    return client.models.generate_content(
+                        model=target_model,
+                        contents=user_text,
+                        config={"system_instruction": system_instruction, "temperature": 0.2, "max_output_tokens": 350}
+                    )
+
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(_sync_call),
+                    timeout=timeout
+                )
+                if response and response.text and response.text.strip():
+                    return response.text.strip()
+            except Exception as e:
+                last_error = e
+                logger.warning(f"[LLMOrchestrator] Gemini model '{m_name}' failed or busy: {e}. Trying fallback model...")
+                continue
+
+        raise last_error or RuntimeError("Gemini returned empty response")
 
     async def _query_cloudflare(
         self,

@@ -14,6 +14,19 @@ from app.core.config import settings
 logger = logging.getLogger("sozlab.call_concatenator")
 
 
+def _get_ffmpeg_bin() -> str:
+    """Finds ffmpeg from system PATH or imageio_ffmpeg bundled binary."""
+    import shutil
+    sys_ffmpeg = shutil.which("ffmpeg")
+    if sys_ffmpeg:
+        return sys_ffmpeg
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return "ffmpeg"
+
+
 class CallConcatenator:
     def __init__(self):
         self.cache_dir: Path = settings.AUDIO_CACHE_DIR
@@ -28,7 +41,7 @@ class CallConcatenator:
         tmp_input.write_bytes(input_bytes)
         try:
             cmd = [
-                "ffmpeg", "-y", "-i", str(tmp_input),
+                _get_ffmpeg_bin(), "-y", "-i", str(tmp_input),
                 "-ac", "1",
                 "-ar", "24000",
                 "-c:a", "pcm_s16le",
@@ -79,7 +92,7 @@ class CallConcatenator:
 
         try:
             cmd = [
-                "ffmpeg", "-y", "-i", str(input_path),
+                _get_ffmpeg_bin(), "-y", "-i", str(input_path),
                 "-ac", "1",
                 "-ar", "24000",
                 "-c:a", "pcm_s16le",
