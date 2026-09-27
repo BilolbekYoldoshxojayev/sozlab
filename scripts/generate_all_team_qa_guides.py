@@ -209,8 +209,8 @@ def generate_role_pdf(filename, role_name, member_name, badge_color, summary_des
     story.append(Spacer(1, 2))
     story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor(badge_color), spaceBefore=2, spaceAfter=10))
 
-    story.append(Paragraph(f"Final Pitch & 2-Daqiqalik Q&A Qo'llanmasi: {role_name}", title_style))
-    story.append(Paragraph(f"Mas'ul a'zo: <b>{member_name}</b> | Umummilliy AI Xakaton (Ta'lim Treki)", subtitle_style))
+    story.append(Paragraph(f"2-Daqiqalik Hakamlar Q&A Qo'llanmasi: {role_name}", title_style))
+    story.append(Paragraph(f"Mas'ul a'zo: <b>{member_name}</b> | Taqdimotdan Keyingi Q&A Himoya Bosqichi", subtitle_style))
 
     # Summary box
     summary_box = [
@@ -296,7 +296,7 @@ def generate_role_pdf(filename, role_name, member_name, badge_color, summary_des
     ]))
     story.append(t_fin)
 
-    custom_canvas = get_canvas_class(f"SözLab — {role_name}", f"Final Pitch Q&A: {member_name}")
+    custom_canvas = get_canvas_class(f"SözLab — {role_name}", f"2-Daqiqalik Q&A Himoyasi: {member_name}")
     doc.build(story, canvasmaker=custom_canvas)
     print(f"[SUCCESS] Role PDF generated: {filename}")
 
