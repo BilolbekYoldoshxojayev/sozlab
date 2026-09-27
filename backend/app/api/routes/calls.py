@@ -207,22 +207,30 @@ async def process_call_audio_turn(
     audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
     citizen_audio_data_uri = f"data:{mime_type};base64,{audio_b64}"
 
-    # Save citizen turn audio to disk & transcode to 24kHz mono WAV in parallel
+    # Save citizen turn audio to disk & transcode to 24kHz mono WAV
     turn_idx = len(call.messages)
     citizen_wav_filename = f"call_{call_id}_turn_{turn_idx}_citizen.wav"
     citizen_wav_path = settings.AUDIO_CACHE_DIR / citizen_wav_filename
-    transcode_task = asyncio.to_thread(call_concatenator.transcode_to_wav, audio_bytes, citizen_wav_path)
+    transcode_ok = await asyncio.to_thread(call_concatenator.transcode_to_wav, audio_bytes, citizen_wav_path)
+
+    # Use clean, standardized WAV if transcode succeeded, ensuring 100% readable audio for VoiceLab & Whisper
+    if transcode_ok and citizen_wav_path.exists() and citizen_wav_path.stat().st_size > 44:
+        stt_bytes = citizen_wav_path.read_bytes()
+        stt_mime = "audio/wav"
+        stt_filename = citizen_wav_filename
+    else:
+        stt_bytes = audio_bytes
+        stt_mime = mime_type
+        stt_filename = upload_file.filename or ("speech.webm" if "webm" in mime_type else "speech.wav")
 
     # Transcribe via VoiceLab & evaluate through dialog manager immediately without blocking
     transcribed_text, dialog_res = await dialog_manager.process_audio_turn(
         call_id=call_id,
-        audio_bytes=audio_bytes,
-        mime_type=mime_type,
+        audio_bytes=stt_bytes,
+        mime_type=stt_mime,
+        filename=stt_filename,
         voice_name=selected_voice or "Gulnoza"
     )
-
-    # Await transcode task before message creation & audio concatenation
-    await transcode_task
 
     print(f"[TRANSCRIBED-CITIZEN-SPEECH]: '{transcribed_text}'")
 

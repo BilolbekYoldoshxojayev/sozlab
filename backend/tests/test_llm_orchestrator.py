@@ -27,58 +27,58 @@ from app.services.knowledge_base import OUT_OF_SCOPE_REFUSAL
 client = TestClient(app)
 
 @pytest.mark.asyncio
-async def test_orchestrator_rank1_cloudflare_success():
-    """Rank 1: Cloudflare Workers AI responds successfully."""
+async def test_orchestrator_rank1_gemini_success():
+    """Rank 1: Google Gemini responds successfully (prioritized)."""
     orch = LLMOrchestrator()
     expected_text = "Konstitutsiyaning 50-moddasiga ko'ra umumiy o'rta ta'lim bepul va majburiydir."
 
-    with patch.object(orch, "_query_cloudflare", new_callable=AsyncMock) as mock_cf:
-        mock_cf.return_value = expected_text
+    with patch.object(orch, "_query_gemini", new_callable=AsyncMock) as mock_gemini:
+        mock_gemini.return_value = expected_text
 
         text, provider = await orch.generate_response(
             user_text="Maktabda pul yig'ish mumkinmi?"
         )
 
         assert text == expected_text
-        assert provider == LLMOrchestrator.PROVIDER_CLOUDFLARE
-        mock_cf.assert_awaited_once()
+        assert provider == LLMOrchestrator.PROVIDER_GEMINI
+        mock_gemini.assert_awaited_once()
 
 @pytest.mark.asyncio
-async def test_orchestrator_rank2_groq_fallback_on_cloudflare_failure():
-    """Rank 2: When Cloudflare returns error/timeout, cascades to Groq."""
+async def test_orchestrator_rank2_cloudflare_fallback_on_gemini_failure():
+    """Rank 2: When Gemini returns error/timeout, cascades to Cloudflare."""
     orch = LLMOrchestrator()
     expected_text = "O'RQ-637-sonli 'Ta'lim to'g'risida'gi Qonunning 9-moddasiga binoan 1-sinfga qabul 7 yoshdan."
 
-    with patch.object(orch, "_query_cloudflare", side_effect=httpx.HTTPStatusError("500 Server Error", request=MagicMock(), response=MagicMock())):
-        with patch.object(orch, "_query_groq", new_callable=AsyncMock) as mock_groq:
-            mock_groq.return_value = expected_text
+    with patch.object(orch, "_query_gemini", side_effect=Exception("Gemini busy")):
+        with patch.object(orch, "_query_cloudflare", new_callable=AsyncMock) as mock_cf:
+            mock_cf.return_value = expected_text
 
             text, provider = await orch.generate_response(
                 user_text="1-sinfga qabul yoshi necha?"
             )
 
             assert text == expected_text
-            assert provider == LLMOrchestrator.PROVIDER_GROQ
-            mock_groq.assert_awaited_once()
+            assert provider == LLMOrchestrator.PROVIDER_CLOUDFLARE
+            mock_cf.assert_awaited_once()
 
 @pytest.mark.asyncio
-async def test_orchestrator_rank3_gemini_fallback_on_groq_and_cf_failure():
-    """Rank 3: When Cloudflare and Groq fail, cascades to Google Gemini."""
+async def test_orchestrator_rank3_groq_fallback_on_gemini_and_cf_failure():
+    """Rank 3: When Gemini and Cloudflare fail, cascades to Groq."""
     orch = LLMOrchestrator()
     expected_text = "VMQ-447 qaroriga ko'ra xotin-qizlar magistratura to'lov-kontrakti davlat tomonidan qoplanadi."
 
-    with patch.object(orch, "_query_cloudflare", side_effect=httpx.HTTPStatusError("502 Bad Gateway", request=MagicMock(), response=MagicMock())):
-        with patch.object(orch, "_query_groq", side_effect=httpx.HTTPStatusError("429 Rate Limit", request=MagicMock(), response=MagicMock())):
-            with patch.object(orch, "_query_gemini", new_callable=AsyncMock) as mock_gemini:
-                mock_gemini.return_value = expected_text
+    with patch.object(orch, "_query_gemini", side_effect=Exception("Gemini error")):
+        with patch.object(orch, "_query_cloudflare", side_effect=httpx.HTTPStatusError("502 Bad Gateway", request=MagicMock(), response=MagicMock())):
+            with patch.object(orch, "_query_groq", new_callable=AsyncMock) as mock_groq:
+                mock_groq.return_value = expected_text
 
                 text, provider = await orch.generate_response(
                     user_text="Magistratura xotin-qizlar kontrakti to'lanadimi?"
                 )
 
                 assert text == expected_text
-                assert provider == LLMOrchestrator.PROVIDER_GEMINI
-                mock_gemini.assert_awaited_once()
+                assert provider == LLMOrchestrator.PROVIDER_GROQ
+                mock_groq.assert_awaited_once()
 
 @pytest.mark.asyncio
 async def test_orchestrator_rank4_mistral_fallback_on_ranks_1_to_3_failure():
@@ -148,11 +148,11 @@ async def test_orchestrator_call_summary_multi_tier():
         "AI: Bolalar 7 yoshga to'ladigan yilda 1-sinfga qabul qilinadi."
     ]
 
-    # Test summary with Cloudflare success
-    with patch.object(orch, "_query_cloudflare", new_callable=AsyncMock) as mock_cf:
-        mock_cf.return_value = "1-sinfga qabul yoshi (7 yosh) tushuntirildi."
+    # Test summary with Gemini success (prioritized Rank 1)
+    with patch.object(orch, "_query_gemini", new_callable=AsyncMock) as mock_gemini:
+        mock_gemini.return_value = "1-sinfga qabul yoshi (7 yosh) tushuntirildi."
         summary, provider = await orch.generate_call_summary(history)
-        assert provider == LLMOrchestrator.PROVIDER_CLOUDFLARE
+        assert provider == LLMOrchestrator.PROVIDER_GEMINI
         assert "7 yosh" in summary
 
     # Test summary when all LLMs fail

@@ -81,11 +81,6 @@ export default function AdminPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Teleprompter Auto-scroll
-  useEffect(() => {
-    teleprompterEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [ghostMessages]);
-
   // When selected call changes, load continuous full-call audio ONCE and reset playback state
   useEffect(() => {
     if (!recordedAudioRef.current) return;
@@ -319,20 +314,6 @@ export default function AdminPage() {
       };
     });
   }, [selectedRecordedCall, activeMarkers]);
-
-  // Real-time auto-scroll to active turn in transcript pane
-  useEffect(() => {
-    if (activeTurnIndex !== null) {
-      const matchingIdx = selectedCallTurns.findIndex((t) => t.markerIndex === activeTurnIndex);
-      const targetIdx = matchingIdx !== -1 ? matchingIdx : activeTurnIndex;
-      if (turnRefs.current[targetIdx]) {
-        turnRefs.current[targetIdx]?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'nearest',
-        });
-      }
-    }
-  }, [activeTurnIndex, selectedCallTurns]);
 
   // Direct seek to specific second and activate turn marker
   const seekToTime = (targetSec: number, turnIdx?: number) => {
@@ -594,7 +575,7 @@ export default function AdminPage() {
                 <div className="text-2xl sm:text-3xl font-black text-[#0A2E31] mt-1 font-mono">
                   {analytics ? `${Math.floor(analytics.avg_call_duration_seconds / 60)}m ${analytics.avg_call_duration_seconds % 60}s` : '0m 0s'}
                 </div>
-                <span className="text-[11px] font-semibold text-slate-500">VAD {analytics ? '1.4s' : '1.4s'} aniqlikda</span>
+                <span className="text-[11px] font-semibold text-slate-500">VAD {analytics ? '1.5s' : '1.5s'} tanaffus</span>
               </div>
               <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-200 shadow-xs">
                 <Clock className="w-6 h-6" />

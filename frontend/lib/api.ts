@@ -72,8 +72,11 @@ export async function sendAudioTurn(
   voiceName = 'uz-UZ-MadinaNeural'
 ): Promise<AudioTurnResponse> {
   const formData = new FormData();
-  formData.append('audio', audioBlob, 'speech.webm');
-  formData.append('file', audioBlob, 'speech.webm');
+  const mime = audioBlob.type || 'audio/webm';
+  const ext = mime.includes('mp4') ? 'mp4' : (mime.includes('ogg') ? 'ogg' : (mime.includes('wav') ? 'wav' : 'webm'));
+  const fn = `speech.${ext}`;
+  formData.append('audio', audioBlob, fn);
+  formData.append('file', audioBlob, fn);
   formData.append('voice_enabled', voiceEnabled ? 'true' : 'false');
   formData.append('voice_name', voiceName);
   formData.append('voice', voiceName);

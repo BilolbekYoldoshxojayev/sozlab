@@ -379,7 +379,8 @@ class AIDialogManager:
         call_id: str,
         audio_bytes: bytes,
         mime_type: str = "audio/wav",
-        voice_name: str = "Lola"
+        voice_name: str = "Lola",
+        filename: Optional[str] = None,
     ) -> Tuple[str, DialogTurnResponse]:
         """
         Multimodal audio recognition using VoiceLab Studio SDK exclusively.
@@ -399,11 +400,26 @@ class AIDialogManager:
             )
             return "(Tushunarsiz ovoz)", dialog_res
 
+        # Resolve correct audio container filename
+        if not filename:
+            if audio_bytes.startswith(b"RIFF") or "wav" in mime_type.lower():
+                fn = "user_call.wav"
+            elif audio_bytes.startswith(b"\x1aE\xdf\xa3") or "webm" in mime_type.lower():
+                fn = "user_call.webm"
+            elif audio_bytes.startswith(b"OggS") or "ogg" in mime_type.lower():
+                fn = "user_call.ogg"
+            elif b"ftyp" in audio_bytes[:32] or any(m in mime_type.lower() for m in ("mp4", "m4a", "aac")):
+                fn = "user_call.mp4"
+            else:
+                fn = "user_call.webm" if "webm" in mime_type.lower() else "user_call.wav"
+        else:
+            fn = filename
+
         # Transcribe with VoiceLab Studio SDK
         transcribed_text = await stt_service.transcribe(
             audio_bytes=audio_bytes,
             mime_type=mime_type,
-            filename="user_call.wav",
+            filename=fn,
             language="uz"
         )
 

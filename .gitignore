@@ -58,3 +58,7 @@ backend/data/
 
 # Internal team guides
 team_guides/
+
+# Video artifacts
+video/
+*.mp4

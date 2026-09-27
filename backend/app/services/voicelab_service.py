@@ -67,7 +67,10 @@ class VoiceLabService:
 
     def _init_client(self):
         try:
-            from voicelab import VoiceLab
+            try:
+                from voicelab import VoiceLab
+            except ImportError:
+                from voicelab.client import VoiceLab
             self._client = VoiceLab(api_key=self.api_key)
             logger.info("[VoiceLab] Official client initialized successfully.")
         except Exception as e:
@@ -123,24 +126,57 @@ class VoiceLabService:
 
         return await asyncio.to_thread(self._sync_tts_synthesize, clean_text, v_id, spd)
 
-    def _sync_transcribe(self, audio_bytes: bytes, filename: str, language: str) -> str:
+    def _sync_transcribe(
+        self,
+        audio_bytes: bytes,
+        filename: str = "speech.wav",
+        language: str = "uz",
+        mime_type: Optional[str] = None
+    ) -> str:
         client = self.get_client()
         if not client:
             raise VoiceLabAPIException("VoiceLab client is not initialized", status_code=500)
 
-        # Detect audio container format
-        if audio_bytes.startswith(b"RIFF"):
+        # Detect audio container format robustly
+        header = audio_bytes[:64] if len(audio_bytes) >= 64 else audio_bytes
+        if header.startswith(b"RIFF"):
             ct = "audio/wav"
             fn = "speech.wav"
-        elif audio_bytes.startswith(b"\x1aE\xdf\xa3"):
+        elif header.startswith(b"\x1aE\xdf\xa3") or b"webm" in header.lower():
             ct = "audio/webm"
             fn = "speech.webm"
-        elif audio_bytes.startswith(b"OggS"):
+        elif header.startswith(b"OggS"):
             ct = "audio/ogg"
             fn = "speech.ogg"
+        elif b"ftyp" in header or (mime_type and any(m in mime_type.lower() for m in ("mp4", "m4a", "aac"))):
+            ct = "audio/mp4"
+            fn = "speech.mp4"
+        elif header.startswith(b"ID3") or (len(header) >= 2 and header[:2] in (b"\xff\xfb", b"\xff\xf3", b"\xff\xf2")):
+            ct = "audio/mpeg"
+            fn = "speech.mp3"
+        elif mime_type and "webm" in mime_type.lower():
+            ct = "audio/webm"
+            fn = "speech.webm"
+        elif mime_type and "ogg" in mime_type.lower():
+            ct = "audio/ogg"
+            fn = "speech.ogg"
+        elif mime_type and ("mp4" in mime_type.lower() or "m4a" in mime_type.lower() or "aac" in mime_type.lower()):
+            ct = "audio/mp4"
+            fn = "speech.mp4"
+        elif mime_type and ("mpeg" in mime_type.lower() or "mp3" in mime_type.lower()):
+            ct = "audio/mpeg"
+            fn = "speech.mp3"
+        elif mime_type and "wav" in mime_type.lower():
+            ct = "audio/wav"
+            fn = "speech.wav"
         else:
-            ct = "audio/wav" if filename.endswith(".wav") else "audio/webm"
-            fn = filename
+            if filename and filename.lower().endswith((".wav", ".webm", ".ogg", ".mp3", ".mp4", ".m4a")):
+                fn = filename
+                ext = filename.lower().split(".")[-1]
+                ct = f"audio/{ext}" if ext != "mp3" else "audio/mpeg"
+            else:
+                ct = "audio/webm"
+                fn = "speech.webm"
 
         t0 = time.perf_counter()
         print(f"\n[VOICELAB-STT] Sending {len(audio_bytes):,} bytes ({ct}) to VoiceLab API...")
@@ -201,13 +237,14 @@ class VoiceLabService:
     async def transcribe_audio(
         self,
         audio_bytes: bytes,
-        filename: str = "voice.wav",
-        language: str = "uz"
+        filename: str = "speech.wav",
+        language: str = "uz",
+        mime_type: Optional[str] = None
     ) -> str:
         """Asynchronously transcribes audio using VoiceLab STT."""
         if not audio_bytes or len(audio_bytes) < 200:
             return ""
-        return await asyncio.to_thread(self._sync_transcribe, audio_bytes, filename, language)
+        return await asyncio.to_thread(self._sync_transcribe, audio_bytes, filename, language, mime_type)
 
 
 voicelab_service = VoiceLabService()

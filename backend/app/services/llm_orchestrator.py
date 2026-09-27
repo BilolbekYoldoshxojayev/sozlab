@@ -447,11 +447,11 @@ class LLMOrchestrator:
         print(f"\n============================================================")
         print(f"[LLM-ORCHESTRATOR] Routing Query: '{user_text}'")
 
-        # Working speed hierarchy: Cloudflare (1.5s - prioritized) -> Groq -> Gemini -> Mistral -> Rule Engine
+        # Working speed hierarchy: Gemini (Rank 1 - prioritized) -> Cloudflare -> Groq -> Mistral -> Rule Engine
         tiers = [
+            (self.PROVIDER_GEMINI, lambda: self._query_gemini(user_text, system_instruction, timeout=req_timeout)),
             (self.PROVIDER_CLOUDFLARE, lambda: self._query_cloudflare(messages, timeout=req_timeout)),
             (self.PROVIDER_GROQ, lambda: self._query_groq(messages, timeout=req_timeout)),
-            (self.PROVIDER_GEMINI, lambda: self._query_gemini(user_text, system_instruction, timeout=req_timeout)),
             (self.PROVIDER_MISTRAL, lambda: self._query_mistral(messages, timeout=req_timeout)),
         ]
 

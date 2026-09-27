@@ -94,7 +94,7 @@ export default function RoleGateModal({ isOpen, onClose }: RoleGateModalProps) {
               <div className="mt-4 pt-4 border-t border-[#035B60]/20 space-y-2 text-xs text-slate-700">
                 <div className="flex items-center gap-2 text-xs font-medium">
                   <CheckCircle2 className="w-4 h-4 text-[#035B60] shrink-0" />
-                  <span>Tabiiy o&apos;zbek ovozi (Hands-Free VAD 1.4s)</span>
+                  <span>Tabiiy o&apos;zbek ovozi (Hands-Free VAD 1.5s)</span>
                 </div>
                 <div className="flex items-center gap-2 text-xs font-medium">
                   <CheckCircle2 className="w-4 h-4 text-[#035B60] shrink-0" />

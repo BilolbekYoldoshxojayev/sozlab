@@ -127,17 +127,17 @@ export default function CallSimulator() {
         ambientNoiseFloorRef.current = Math.min(0.04, ambientNoiseFloorRef.current * 0.92 + level * 0.08);
       }
 
-      // Balanced speech & silence thresholds prioritizing conversational quality
+      // Balanced speech & silence thresholds prioritizing conversational quality and human pauses
       const SPEECH_TRIGGER = Math.max(0.034, ambientNoiseFloorRef.current * 1.45 + 0.008);
-      const SILENCE_DURATION_MS = 1200; // 1.2s balanced silence window for natural pauses
+      const SILENCE_DURATION_MS = 1500; // 1.5s hands-free VAD pause window
 
       if (level > SPEECH_TRIGGER) {
         if (!hasSpokenRef.current) {
           hasSpokenRef.current = true;
           speechStartTimeRef.current = Date.now();
         }
-        // Cancel silence countdown when user resumes speaking
-        if (silenceTimerRef.current && level > SPEECH_TRIGGER * 1.2) {
+        // Cancel silence countdown immediately when user resumes speaking
+        if (silenceTimerRef.current) {
           clearTimeout(silenceTimerRef.current);
           silenceTimerRef.current = null;
         }
@@ -589,7 +589,7 @@ export default function CallSimulator() {
               </span>
             </div>
             <p className="text-[11px] text-slate-500 font-medium">
-              SözLab Avtonom Ovozli Maslahat • Hands-Free VAD (1.4s)
+              SözLab Avtonom Ovozli Maslahat • Hands-Free VAD (1.5s)
             </p>
           </div>
         </div>

@@ -36,6 +36,7 @@ class STTService:
                 audio_bytes=audio_bytes,
                 filename=filename,
                 language=language,
+                mime_type=mime_type,
             )
             if transcript and transcript.strip():
                 return transcript.strip()
@@ -51,7 +52,29 @@ class STTService:
                 t0 = time.perf_counter()
                 print(f"🔄 [STT FALLBACK] Running Groq Whisper Large v3 Turbo ({len(audio_bytes):,} bytes)...")
                 headers = {"Authorization": f"Bearer {settings.GROQ_API_KEY}"}
-                files = {"file": (filename or "speech.wav", audio_bytes, mime_type or "audio/wav")}
+
+                # Robust container resolution for Whisper decoder
+                header = audio_bytes[:64] if len(audio_bytes) >= 64 else audio_bytes
+                if header.startswith(b"RIFF"):
+                    fn = "speech.wav"
+                    ct = "audio/wav"
+                elif header.startswith(b"\x1aE\xdf\xa3") or (mime_type and "webm" in mime_type.lower()):
+                    fn = "speech.webm"
+                    ct = "audio/webm"
+                elif header.startswith(b"OggS") or (mime_type and "ogg" in mime_type.lower()):
+                    fn = "speech.ogg"
+                    ct = "audio/ogg"
+                elif b"ftyp" in header or (mime_type and any(m in mime_type.lower() for m in ("mp4", "m4a", "aac"))):
+                    fn = "speech.mp4"
+                    ct = "audio/mp4"
+                elif header.startswith(b"ID3") or (mime_type and any(m in mime_type.lower() for m in ("mpeg", "mp3"))):
+                    fn = "speech.mp3"
+                    ct = "audio/mpeg"
+                else:
+                    fn = filename or "speech.wav"
+                    ct = mime_type or "audio/wav"
+
+                files = {"file": (fn, audio_bytes, ct)}
                 data = {"model": "whisper-large-v3-turbo", "language": "uz"}
                 async with httpx.AsyncClient(timeout=25.0) as client:
                     resp = await client.post(
