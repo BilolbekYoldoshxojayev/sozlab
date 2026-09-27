@@ -53,7 +53,7 @@ class NumberedCanvas(canvas.Canvas):
         # Header (pages > 1)
         if self._pageNumber > 1:
             self.drawString(40, 810, "SözLab — O'zbekiston Ta'lim Vazirligi AI Ovozli Call Markazi")
-            self.drawRightString(555, 810, "Final Pitch & Texnik Q&A Ensiklopediyasi")
+            self.drawRightString(555, 810, "2 Daqiqalik Texnik Q&A Himoyasi Ensiklopediyasi")
             self.setStrokeColor(colors.HexColor("#CBD5E1"))
             self.setLineWidth(0.5)
             self.line(40, 804, 555, 804)
@@ -203,8 +203,8 @@ def create_qa_pdf(filename="sozlab_pitch_qa_guide.pdf"):
     story.append(Spacer(1, 4))
     story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#1D4ED8"), spaceBefore=2, spaceAfter=12))
 
-    story.append(Paragraph("Final Pitch & Texnik Hakamlar Savol-Javob Ensiklopediyasi", title_style))
-    story.append(Paragraph("2 Daqiqalik Q&A Sessiyasida 100% G'oliblik Natijasiga Eirishish Bo'yicha Mukammal Taktik Qo'llanma", subtitle_style))
+    story.append(Paragraph("2 Daqiqalik Hakamlar Q&A va Texnik Himoya Ensiklopediyasi", title_style))
+    story.append(Paragraph("Taqdimotdan Keyingi 120 Soniyalik Hakamlar Interrogatsiyasida 100% Natijaga Erishish Bo'yicha Taktik Qo'llanma", subtitle_style))
 
     # Info summary box
     summary_box = [
@@ -232,13 +232,13 @@ def create_qa_pdf(filename="sozlab_pitch_qa_guide.pdf"):
     story.append(Spacer(1, 12))
 
     # ========================== SECTION 1: STRATEGY ==========================
-    story.append(Paragraph("1. 2 DAQIQALIK Q&A STRATEGIYASI VA REGLAMENT QOIDALARI", h1_style))
+    story.append(Paragraph("1. TAQDIMOTDAN KEYINGI 2 DAQIQALIK Q&A HIMOYASI STRATEGIYASI", h1_style))
     story.append(HRFlowable(width="100%", thickness=0.8, color=colors.HexColor("#CBD5E1"), spaceBefore=1, spaceAfter=8))
 
     strategy_text = (
-        "<b>2 daqiqa</b> — bu o'ta qisqa vaqt. Hakamlar ko'pi bilan 3-4 ta tezkor savol berishga ulguradi. "
-        "Agar har bir savolga 40-50 soniya javob bersangiz, faqat 2 ta savolga ulgurasiz va boshqa hakamlarning qiziqishi qondirilmay qoladi. "
-        "<b>Oltin mezon: Har bir javob qat'iy ravishda 20–25 soniyadan oshmasligi kerak!</b>"
+        "<b>Taqdimot (Pitch) tugadi.</b> Endi siz hakamlar hay'atining 2 daqiqalik qat'iy savol-javob maydonidasiz. "
+        "Bu bosqichda hakamlar loyihangizning mustahkamligini, kod sifatini va real hayotda ishlay olishini sinashadi. "
+        "Vaqt o'ta cheklangan: 120 soniyada 3–4 ta savolga ulgurish uchun <b>har bir javob qat'iy ravishda 20–25 soniyadan oshmasligi shart!</b>"
     )
     story.append(Paragraph(strategy_text, ans_style))
     story.append(Spacer(1, 4))
